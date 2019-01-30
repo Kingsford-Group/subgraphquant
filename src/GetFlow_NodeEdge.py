@@ -189,14 +189,13 @@ def WriteEntropy(outputfile, Edge_Flow, Graphs):
 
 if __name__ == "__main__":
 	if len(sys.argv) == 1:
-		print("python GetFlow_NodeEdge.py <mode 0 (ground truth) or 1 (salmon) or 2 (kallisto)> <gtf_file> <graph_file> <prefixtrie> <seq_file> <exp_file> <output_prefix> (<assembly_gtf>)")
+		print("python GetFlow_NodeEdge.py <mode 0 (ground truth) or 1 (salmon) or 2 (kallisto)> <gtf_file> <graph_file> <prefixtrie> <exp_file> <output_prefix> (<assembly_gtf>)")
 	else:
 		gtf_file = sys.argv[2]
 		graph_file = sys.argv[3]
 		prefixtrie = sys.argv[4]
-		seq_file = sys.argv[5]
-		exp_file = sys.argv[6]
-		output_prefix = sys.argv[7]
+		exp_file = sys.argv[5]
+		output_prefix = sys.argv[6]
 
 		if sys.argv[1] == "0":
 			Exp = ReadGroundTruth(exp_file)
@@ -216,9 +215,10 @@ if __name__ == "__main__":
 
 		new_graphs, eq_classes = load_data(prefixtrie)
 
-		TransEdges = ReadTransEdges(seq_file, Graphs, GraphNameIndex, TransGeneMap)
+		#TransEdges = ReadTransEdges(seq_file, Graphs, GraphNameIndex, TransGeneMap)
+		TransEdges = ReadTransEdges_fromgraph(Graphs)
 		TransNodes = ConvertEdges2Nodes(TransEdges, Graphs, GraphNameIndex)
-		if len(sys.argv) > 8:
+		if len(sys.argv) > 7:
 			assembly_gtf = sys.argv[-1]
 			asm_transcripts = ReadGTF(assembly_gtf)
 			newTransPaths = PathsFromAssembly(asm_transcripts, Graphs)

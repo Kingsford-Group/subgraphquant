@@ -46,6 +46,17 @@ def ReadSalmon(salmonquant):
 	return TransFlow
 
 
+def ReadTransEdges_fromgraph(Graphs):
+	TransEdges = []
+	for g in Graphs:
+		tnames = sum([e.IncidentTranscripts for e in g.vEdges], [])
+		tnames = list(set(tnames))
+		for tname in tnames:
+			edges = [e.ID for e in g.vEdges if tname in e.IncidentTranscripts]
+			TransEdges.append( [g.GeneID, tname, edges] )
+	return TransEdges
+
+
 def ReadTransEdges(seqfile, Graphs, GraphNameIndex, TransGeneMap):
 	TransEdges = []
 	fp = open(seqfile, 'r')
