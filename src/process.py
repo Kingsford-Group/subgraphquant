@@ -31,7 +31,7 @@ if __name__=="__main__":
 				read2 = readprefix + "_2.fasta.gz"
 			p = subprocess.Popen("salmon quant -l A -p 4 -i {} -1 {} -2 {} --gcBias --seqBias --posBias --dumpEqWeights -o {} --writeMappings={}".format(salmonindex, read1, read2, outdir_salmon, outdir_salmon+"/mapping.sam"), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			out, err = p.communicate()
-			if err != b'':
+			if b"ERROR" in err:
 				print(err)
 				sys.exit()
 
@@ -66,7 +66,7 @@ if __name__=="__main__":
 			trans_bamfile = outdir_salmon + "/mapping.bam"
 			p = subprocess.Popen("python {}/src/ProcessEqClasses.py {} {} {} {} {}".format(codedir, gtffile, graphfile, trans_bamfile, outdir_gs+"/eq_classes.txt", outdir_gs+"/gs"), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			out, err = p.communicate()
-			if err != b'':
+			if (b'ERROR' in err) or (b'Error' in err):
 				print(err)
 				sys.exit()
 
@@ -80,6 +80,6 @@ if __name__=="__main__":
 			print("ESTIMATING PREFIX GRAPH EDGE FLOW...")
 			p = subprocess.Popen("python {}/src/run_onetime_ipopt.py {} {} {}".format(codedir, outdir_salmon, outdir_gs + "/gs", outdir_gs + "/gs"), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			out, err = p.communicate()
-			if err != b'':
+			if (b'ERROR' in err) or (b'Error' in err):
 				print(err)
 				sys.exit()

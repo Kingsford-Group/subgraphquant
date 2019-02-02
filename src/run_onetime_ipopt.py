@@ -2,12 +2,10 @@
 
 import sys
 import numpy as np
-import scipy.optimize
 from pathlib import Path
 from TranscriptClass import *
 from TranscriptAlignmentClass import *
 from IpoptOptimizeClass import *
-from Optimize import *
 from utils import *
 from trie_conversion import *
 from EffLen_VLMM import *

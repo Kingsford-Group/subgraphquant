@@ -27,4 +27,4 @@ if __name__=="__main__":
 		eqclasses = ProcessEquivalentClass(trans_bamfile, Transcripts, Graphs, GraphNameIndex)
 		WriteEquivalentClass(out_eqclass, eqclasses)
 
-		work(graphfile, outprefix_trie, outprefix_trie, debug = False)
+		work(graphfile, out_eqclass, outprefix_trie, debug = False)

@@ -125,7 +125,7 @@ def ProcessCenterwiseSimilarity(folder, CenterSampleMap):
 	TransNames = set()
 	for c,samples in CenterSampleMap.items():
 		for s in samples:
-			gapfile = folder + "/salmon_Full_" + s + "/graphsalmon/gs_bound_round0.txt"
+			gapfile = folder + "/salmon_Full_" + s + "/prefixgraph/gs_bound_round0.txt"
 			AbundanceGap = ReadAbundanceGap(gapfile)
 			Gaps[c].append(AbundanceGap)
 			if len(TransNames) == 0:
@@ -148,10 +148,10 @@ def ProcessAllSampleEdgeARD(folder, CenterSampleMap):
 	GeneIDs = []
 	for c,samples in CenterSampleMap.items():
 		for s in samples:
-			salmonedgefile = folder + "/salmon_Full_" + s + "/graphsalmon/salmon_edge_flow.txt"
-			graphfile = folder + "/salmon_Full_" + s + "/graphsalmon/gs_graph_fragstart.txt"
-			prefixtrie = folder + "/salmon_Full_" + s + "/graphsalmon/gs"
-			resultfile = folder + "/salmon_Full_" + s + "/graphsalmon/gs_result_ipopt_round0.pkl"
+			salmonedgefile = folder + "/salmon_Full_" + s + "/prefixgraph/salmon_edge_flow.txt"
+			graphfile = folder + "/salmon_Full_" + s + "/prefixgraph/gs_graph_fragstart.txt"
+			prefixtrie = folder + "/salmon_Full_" + s + "/prefixgraph/gs"
+			resultfile = folder + "/salmon_Full_" + s + "/prefixgraph/gs_result_ipopt_round0.pkl"
 			old_graphs = ReadGraphFile(graphfile)
 			Edge_Flow_salmon, tmpgene_salmon = ReadEdgeFlow(salmonedgefile)
 			Edge_Flow_gs, tmpgene_gs = ReadGraphSalmonAbundance(graphfile, prefixtrie, resultfile)
@@ -198,7 +198,7 @@ def WriteExample(folder, CenterSampleMap, t, output_example):
 	fp.write("# Name\tSample\tCenter\tlb\tub\tTPM\n")
 	for c,samples in CenterSampleMap.items():
 		for s in samples:
-			gapfile = folder + "/salmon_Full_" + s + "/graphsalmon/gs_bound_round0.txt"
+			gapfile = folder + "/salmon_Full_" + s + "/prefixgraph/gs_bound_round0.txt"
 			AbundanceGap = ReadAbundanceGap(gapfile)
 			quantfile = folder + "/salmon_Full_" + s + "/quant.sf"
 			TPM = ReadTPM(quantfile)
@@ -212,7 +212,7 @@ def WriteExampleDist(folder, CenterSampleMap, t, output_example):
 	fp.write("# Name\tCenter\tposition\tcount\n")
 	for c,samples in CenterSampleMap.items():
 		for s in samples:
-			gapfile = folder + "/salmon_Full_" + s + "/graphsalmon/gs_bound_round0.txt"
+			gapfile = folder + "/salmon_Full_" + s + "/prefixgraph/gs_bound_round0.txt"
 			AbundanceGap = ReadAbundanceGap(gapfile)
 			Gaps[c].append(AbundanceGap[t])
 	centers = list(CenterSampleMap.keys())
@@ -228,17 +228,29 @@ def WriteExampleDist(folder, CenterSampleMap, t, output_example):
 
 
 if __name__=="__main__":
-	metafile = "/home/congm1/savanna/savannacong33/RawData/GEUVADIS/Metadata.txt"
-	folder = "/home/congm1/savanna/savannacong33/SADrealdata/GEUVADIS/"
-	outputprefix = "/home/congm1/savanna/savannacong33/SADrealdata/GEUVADIS"
-	output_example = "/home/congm1/savanna/savannacong33/SADrealdata/GEUVADIS/abundance_gap_example"
+	metafile = "../data/Metadata.txt"
+	folder = "GEUVADIS/"
+	outputprefix = "GEUVADIS/bounds"
+	output_example = outputprefix + "_example"
+
+	if len(sys.argv) == 1:
+		print("python GEUVADIS_bound_example.py (<data meta file>) (<GEUVADIS folder>) (<output prefix>)")
+		print("Using the following default parameters:")
+		print("\tdata meta file = {}".format(metafile))
+		print("\tGEUVADIS folder = {}".format(folder))
+		print("\toutput prefix = {}".format(outputprefix))
+	else:
+		metafile = sys.argv[1]
+		folder = sys.argv[2]
+		outputprefix = sys.argv[3]
+		output_example = outputprefix + "_example"
 
 	CenterSampleMap = ReadCenterMetadata(metafile)
-	# TransSimilarity = ProcessCenterwiseSimilarity(folder, CenterSampleMap)
-	# WriteTransSimilarity(outputprefix + "/abundance_gap_similarity.txt", TransSimilarity)
+	TransSimilarity = ProcessCenterwiseSimilarity(folder, CenterSampleMap)
+	WriteTransSimilarity(outputprefix + "_weightedJaccard.txt", TransSimilarity)
 
-	# ARD = ProcessAllSampleEdgeARD(folder, CenterSampleMap)
-	# WriteAllSampleARD(outputprefix + "/ard_allsamplemean.txt", ARD)
+	ARD = ProcessAllSampleEdgeARD(folder, CenterSampleMap)
+	WriteAllSampleARD(outputprefix + "_meanflowARD.txt", ARD)
 
 	t = "ENST00000483767.5"
 	WriteExample(folder, CenterSampleMap, t, output_example + t + ".txt")
