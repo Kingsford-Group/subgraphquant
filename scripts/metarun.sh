@@ -11,26 +11,41 @@ wget -O - ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_26/gen
 salmon index --gencode -t ${out_folder}/gencode.v26.transcripts.fa -i ${out_folder}/gencode.v26.full
 awk '{if($3=="transcript") print substr($10,2,length($10)-3)"\t"substr($12,2,length($12)-3)}' ${out_folder}/gencode.v26.annotation.gtf > ${out_folder}/gencode.v26.Gene_Trans_Map.txt
 
+#################### Human Body Map dataset ####################
 # download data
-${script_folder}/../data/getdata.sh ${out_folder}/Reads/
-
+${script_folder}/../data/getdata.sh ${out_folder}/Reads_hubmap/
 
 GTFfile="${out_folder}/gencode.v26.annotation.gtf"
 GenomeFasta="${out_folder}/GRCh38.p10.genome.fa"
 SalmonIndex="${out_folder}/gencode.v26.full"
-OutPrefix="${out_folder}/HumanBodyMap/salmon_Full"
+OutPrefix="${out_folder}/HumanBodyMap"
 
-# estimate flow
+# estimate flow for Human Body Map dataset
 while read -r line; do
 
 	ID=${line}
 
-	python ${script_folder}/../src/process.py ${out_folder}/Reads/${ID} ${SalmonIndex} ${OutPrefix}_${ID} ${OutPrefix}_${ID}/prefixgraph ${GTFfile} ${GenomeFasta}
+	python ${script_folder}/../src/process.py ${out_folder}/Reads_hubmap/${ID} ${SalmonIndex} ${OutPrefix}/${ID} ${OutPrefix}/${ID}/prefixgraph ${GTFfile} ${GenomeFasta}
 
-	# get salmon edge flow
-	python ${script_folder}/../src/GetFlow_NodeEdge.py 1 ${GTFfile} ${OutPrefix}_${ID}/prefixgraph/gs_graph_fragstart.txt ${OutPrefix}_${ID}/prefixgraph/gs ${OutPrefix}_${ID}/quant.sf ${OutPrefix}_${ID}/prefixgraph/salmon
+done < ${script_folder}/../data/Metadata_hubmap.txt
 
-	# bounding uncertainty of annotated transcripts
-	python ${script_folder}/../src/BoundingTranscriptFlows.py ${OutPrefix}_${ID}/prefixgraph/gs ${OutPrefix}_${ID}/prefixgraph/gs_result_ipopt_round0.pkl ${OutPrefix}_${ID}/prefixgraph/gs_maxflow_bound.txt
-done < ${script_folder}/../data/Metadata.txt
 
+#################### MCF10 dataset ####################
+# download data
+${script_folder}/../data/getdata.sh ${out_folder}/Reads_mcf10/
+
+GTFfile="${out_folder}/gencode.v26.annotation.gtf"
+GenomeFasta="${out_folder}/GRCh38.p10.genome.fa"
+SalmonIndex="${out_folder}/gencode.v26.full"
+OutPrefix="${out_folder}/MCF10"
+
+# estimate flow for Human Body Map dataset
+while read -r line; do
+
+	IFS=$'\t' read -a x <<< ${line}
+	id=${x[4]}
+	echo ${id}
+
+	python ${script_folder}/../src/process.py ${out_folder}/Reads_mcf10/${id} ${SalmonIndex} ${OutPrefix}/${id}/ ${OutPrefix}/${id}/prefixgraph ${GTFfile} ${GenomeFasta}
+
+done < ${script_folder}/../data/Metadata_mcf10.txt
