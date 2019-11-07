@@ -1,18 +1,13 @@
 # Overview
-This repo contain the scripts to quantify the uncertainty of expression estimation for subgraphs. Due to the non-identifiability of RNA-seq expression quantification, there can be multiple configurations of transcript abundances equally optimal in terms of the likelihood. Lower bound and upper bound of abundances of transcripts or a general subgraph can be calculated using this repo.
+This repo contain the scripts to perform non-identifiability aware transcript expression quantification based on [Salmon](https://salmon.readthedocs.io/en/latest/). The optimization problem for expression quantification may have multiple optimal solutions, which is known as non-identifiability problem. The multiple optimal abundances for each transcript is a continuous interval due to the convexity of the optimization problem. This repo provides the codes to calculate the range of optimal transcript abundances under any of the assumptions (1) the expression all comes from the reference transcriptome; (2) the expression comes from any of the splice graph paths; (3) a certain proportion of expression comes from the reference transcriptome and the rest comes from any of the splice graph paths, where the proportion is a user-defined argument.
 
 Three major modules are included:
-+ Uncertainty quantification module.
-+ Flow estimation module, for preparing the graph edge abundances required in the subgraph uncertainty quantification.
-+ Analysis module for the 30 GEUVADIS samples.
++ Non-identifiability aware transcript quantification module.
++ Analysis module for 16 Human Body Map samples.
++ Analysis module for 6 MCF10 cell line samples.
 
 
-# Uncertainty quantification module
-The degree of uncertainty is represented by the lower bound and upper bound of the set of optimal abundances of the queried subgraph.
-
-Subgraph abundance query can be in either disjunctive (OR) or conjunctive (AND) form. 
-+ Disjunctive: Abundance of a disjunctive subgraph is the sum of abundances of RNA molecules that contain at least one edge in the subgraph. 
-+ Conjunctive: Abundance of a conjunctive subgraph is the sum of abundances of RNA molecules that contain all the edges in the subgraph. We extend of the usage of the conjective quantification, so that given a list of edge lists, an edge must be contained for each edge list.
+# Non-identifiability aware transcript quantification module
 
 ## Prerequisite
 + python3 (>=3.4.3)
@@ -20,56 +15,16 @@ Subgraph abundance query can be in either disjunctive (OR) or conjunctive (AND) 
 + [networkx](https://networkx.github.io/documentation/stable/)
 + [numpy](http://www.numpy.org/)
 + [tqdm](https://tqdm.github.io/)
-
-## Usage
-src/flow_graph.py contains the main functions to calculate the lower bound and upper bound of subgraph abundances. Other packages and class definitions need to be imported for preparing the input of the bound calculation.
-```
-from GeneGraph import *
-from flow_graph import FlowGraph
-from trie_conversion import *
-```
-
-The conjunctive and disjunctive subgraph abundance bounds can be calculated using the following python statements
-```
-# g_prefix: an instance of PrefixTrie class
-# g_splice: the instance of GeneGraph class of the same gene as g_prefix
-# flows: the estimated edge abundance of g_prefix
-# edge_list: the list of edges in OR (disjunctive) quantification. Edges are indexed in g_prefix
-# edge_lists: the list of edge lists in AND (conjunctive) quantification. Edges are indexed in g_prefix, and are required to be in topological order.
-# return: a scalar denote the lower / upper bound of the query
-
-# constructing a FlowGraph object, this object will be transformed for calculating max-flow
-fg = FlowGraph(g_prefix.edges, flows, 0, len(g_prefix.nodes)-1)
-
-# Lower bound for OR-quantification
-f = fg.diff_flow(edge_list)
-# Upper bound for OR-quantification
-f = fg.split_flow(edge_list)
-
-# Lower bound for AND-quantification
-f = split_block_flow(edge_lists)
-# Upper bound for AND-Quantifications
-f = fg.block_flow(edge_lists)
-```
-Note that bounds can have floating point number inaccuracies.
-
-
-# Flow estimation module
-To estimate the flow of an prefix graph, the following steps are calculated sequentially: generating the bias correction model using Salmon, construct a splice graph from annotation GTF file, estimating the node biases using Salmon bias correction model, projecting the read alignment onto the graph, estimating flow and assigning multi-mapped reads using EM algorithm. These steps are runned using the script src/process.py
-
-## Prerequisite
++ [pysam](https://pysam.readthedocs.io/en/latest/)
++ [pyipopt](https://github.com/xuy/pyipopt)
++ [cvxopt](http://cvxopt.org/userguide/intro.html)
 + [Salmon](https://salmon.readthedocs.io/en/latest/)
 + [Boost](https://www.boost.org/)
 + [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page)
 + [Jellyfish](https://github.com/gmarcais/Jellyfish)
 + [Spline](https://kluge.in-chemnitz.de/opensource/spline/)
-+ python3 (>=3.4.3)
-+ pickle
-+ [numpy](http://www.numpy.org/)
-+ [tqdm](https://tqdm.github.io/)
-+ [pysam](https://pysam.readthedocs.io/en/latest/)
-+ [pyipopt](https://github.com/xuy/pyipopt)
 + [Ipopt](https://projects.coin-or.org/Ipopt)
++ [GLPK](https://www.gnu.org/software/glpk/)
 
 ## Compile
 The code for processing Salmon bias correction model is written in c++, which depends on Boost, Eigen, Jellyfish, and Spline library. Download the library from the website indicated above. Among these libraries, only Boost need to be compiled, while the others are header-only.
@@ -81,12 +36,42 @@ make (BOOST=) (EIGEN=) (JELLYFISH=) (SPLINE=)
 ```
 
 ## Usage
+Given the (gzipped) fastq/fasta files of an RNA-seq sample, the following script will 
++ perform Salmon quantification; 
++ calculate the range of optimal abundances under (1) complete reference assumption and (2) incomplete reference but correct splice graph assumption.
 ```
 python process.py <readprefix> <salmonindex> <outdir_salmon> <outdir_flow> <gtffile> <genomefasta>
 ```
+Input specification:
+
+Input name    | Type   | Description
+---           | :---:  | ---
+readprefix    | string | Prefix of the paired-end RNA-seq fastq or fastq.gz files, including path. For example, the argument for paired-end files `/home/sample_1.fastq.gz` and `/home/sample_2.fastq.gz` should be `/home/sample`.
+salmonindex   | string | Path to the directory of Salmon indexes. The indexes should be pre-computed. See [Salmon](https://salmon.readthedocs.io/en/latest/) documentation for performing the indexing.
+outdir_salmon | string | Path to the directory to store Salmon quantification result. Salmon quantification will be performed by the script of `process.py`.
+outdir_flow   | string | Path to the directory to store the computed range of optima for all transcripts.
+gtffile       | string | Path to the GTF annotation file. The annotation file should have the same set of transcripts (with the same id) as in Salmon indexes.
+genomefasta   | string | Path to the genome fasta file.
+
+(TODO, add a script to take in the proportion as argument and interpolate the two ranges for the third assumption)
+
+## Output specification
+The main output are the follows:
++ `<outdir_flow>/salmon_lp_bound.txt`: range of optimal abundances under the assumption of complete reference.
++ `<outdir_flow>/gs_maxflow_bound.txt`: range of optimal abundances under the assumption of incomplete reference but correct splice graph.
+
+Both files have the following 3 columns:
+
+Column name | Description
+---         | ---
+Name        | Name of the transcript
+lb          | Lower bound of the range of optimal abundances, normalized. Under the complete reference assumption, it has the same unit as TPM; under the incomplete reference assumption, the normalization is the defined as sum (flow * corresponding effective length) = number of reads.
+ub          | Upper bound of the range of optimal abundances, normalized in the same way as lb.
+
+Note that bounds can have floating point number inaccuracies.
 
 
-# Analysis module for the 30 GEUVADIS samples
+# Analysis module for 16 Human Body Map samples
 
 ## Data accession
 The SRA accession of the 30 GEUVADIS RNA-seq samples can be found in the last column of file data/Metadata.txt. The following command will download the gziped fastq files in the current directory.

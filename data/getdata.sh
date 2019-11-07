@@ -1,19 +1,15 @@
 #!/bin/bash
 
-folder=$0
-folder=${folder%/*}
+script_folder=$0
+folder=$1
 
 while read -r line; do
-	read -ra x <<< "${line}"
-	c=${#x[@]}
 
-	if [[ ! -e ${x[$((c-1))]}/${x[$((c-1))]}_1.fastq.gz ]]; then
-		mkdir -p ${x[$((c-1))]}
-		wget -P ${x[$((c-1))]} ftp://ftp.sra.ebi.ac.uk/vol1/fastq/${x[$((c-1))]:0:6}/${x[$((c-1))]}/${x[$((c-1))]}_1.fastq.gz
+	if [[ ! -e ${folder}/${line}_1.fastq.gz ]]; then
+		wget -P ${folder} ftp://ftp.sra.ebi.ac.uk/vol1/fastq/${line:0:6}/${line}/${line}_1.fastq.gz
 	fi
 
-	if [[ ! -e ${x[$((c-1))]}/${x[$((c-1))]}_2.fastq.gz ]]; then
-		mkdir -p ${x[$((c-1))]}
-		wget -P ${x[$((c-1))]} ftp://ftp.sra.ebi.ac.uk/vol1/fastq/${x[$((c-1))]:0:6}/${x[$((c-1))]}/${x[$((c-1))]}_2.fastq.gz
+	if [[ ! -e ${folder}/${line}_2.fastq.gz ]]; then
+		wget -P ${folder} ftp://ftp.sra.ebi.ac.uk/vol1/fastq/${line:0:6}/${line}/${line}_2.fastq.gz
 	fi
-done < ${folder}/Metadata.txt
+done < ${script_folder%/*}/Metadata.txt
