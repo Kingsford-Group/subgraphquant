@@ -4,6 +4,7 @@ import sys
 import numpy as np
 import pysam
 import tqdm
+import copy
 from TranscriptClass import *
 from TranscriptAlignmentClass import *
 from GeneGraph import *
@@ -12,11 +13,11 @@ from trie_conversion import *
 
 if __name__=="__main__":
 	if len(sys.argv) == 1:
-		print("python ProcessEquivalentClass.py <gtffile> <graphfile> <trans_bamfile> <out_eqclass> <outprefix_trie>")
+		print("python ProcessEquivalentClass.py <gtffile> <graphfile> <salmon_folder> <out_eqclass> <outprefix_trie>")
 	else:
 		gtffile = sys.argv[1]
 		graphfile = sys.argv[2]
-		trans_bamfile = sys.argv[3]
+		salmon_folder = sys.argv[3]
 		out_eqclass = sys.argv[4]
 		outprefix_trie = sys.argv[5]
 
@@ -24,7 +25,6 @@ if __name__=="__main__":
 		Graphs = ReadGraphFile(graphfile)
 		GraphNameIndex = {Graphs[i].GeneID:i for i in range(len(Graphs))}
 
-		eqclasses = ProcessEquivalentClass(trans_bamfile, Transcripts, Graphs, GraphNameIndex)
-		WriteEquivalentClass(out_eqclass, eqclasses)
+		eqclasses = ProcessEquivalentClass(salmon_folder, Transcripts, Graphs, GraphNameIndex, out_eqclass)
 
 		work(graphfile, out_eqclass, outprefix_trie, debug = False)

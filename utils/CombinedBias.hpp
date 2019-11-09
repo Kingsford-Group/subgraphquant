@@ -8,6 +8,7 @@
 #include <map>
 #include <algorithm>
 #include <string>
+#include <numeric>
 #include <omp.h>
 #include <mutex>
 #include "Eigen/Dense"
