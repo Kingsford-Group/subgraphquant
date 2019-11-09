@@ -49,3 +49,6 @@ while read -r line; do
 	python ${script_folder}/../src/process.py ${out_folder}/Reads_mcf10/${id} ${SalmonIndex} ${OutPrefix}/${id}/ ${OutPrefix}/${id}/prefixgraph ${GTFfile} ${GenomeFasta}
 
 done < ${script_folder}/../data/Metadata_mcf10.txt
+
+# calculate I value
+python ${script_folder}/ComputeIValue.py ${out_folder}
