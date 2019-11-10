@@ -113,6 +113,15 @@ if __name__=="__main__":
 				print(err)
 				sys.exit()
 
+		# projecting Salmon quantification result on the edge flow for running LP
+		if not Path(outdir_gs + "/salmon_result.pkl").exists():
+			print("PROJECTING SALMON QUANTIFICATION ON GRAPH")
+			p = subprocess.Popen("python {}/src/GetFlow_quantifier.py {} {} {}".format(codedir, outdir_gs + "/gs", outdir_salmon + "/quant.sf", outdir_gs + "/salmon_result.pkl"), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+			out, err = p.communicate()
+			if (b'ERROR' in err) or (b'Error' in err):
+				print(err)
+				sys.exit()
+
 		# lb and ub under the assumption that reference is complete
 		if not Path(outdir_gs + "/salmon_lp_bound.txt").exists():
 			print("BOUNDING TRANSCRIPTS: COMPLETE REFERENCE ASSUMPTION")
