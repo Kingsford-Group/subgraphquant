@@ -73,7 +73,7 @@ void GetFLDbound(const vector<double>& FLD, int32_t& fldLow, int32_t& fldHigh)
 };
 
 
-vector<double> BiasEffLen_coverage(const string seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, 
+vector<double> BiasEffLen_coverage(const string& seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, 
 	const vector<double>& FLD, int32_t fldLow, int32_t fldHigh)
 {
 	// process GC condition
@@ -180,7 +180,7 @@ vector<double> BiasEffLen_coverage(const string seq, const GCBiasModel_t& gcbias
 };
 
 
-vector<double> BiasEffLen_fragstart(const string seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, 
+vector<double> BiasEffLen_fragstart(const string& seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, 
 	const vector<double>& FLD, int32_t fldLow, int32_t fldHigh)
 {
 	// process GC condition
@@ -301,7 +301,7 @@ vector<double> BiasEffLen_fragstart(const string seq, const GCBiasModel_t& gcbia
 };
 
 
-vector< tuple<int32_t,int32_t,double> > BiasEffLen_matrix(const string seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, 
+vector< tuple<int32_t,int32_t,double> > BiasEffLen_matrix(const string& seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, 
 	const vector<double>& FLD, int32_t fldLow, int32_t fldHigh)
 {
 	// process GC condition
@@ -495,42 +495,125 @@ void ProcessBias_fragstart(const vector<string>& sequences, const GCBiasModel_t&
 };
 
 
-/*void ProcessBias_matrix(const vector<string>& sequences, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, 
-	const vector<double>& FLD, vector< Eigen::MatrixXd >& corrections, int32_t fldLow, int32_t fldHigh, int32_t threads)
+double RegionalBias_fragstart(const string & seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD,
+	int32_t fldLow, int32_t fldHigh, int32_t region_start, int32_t region_end)
 {
-	time_t CurrentTime;
-	string CurrentTimeStr;
-	time(&CurrentTime);
-	CurrentTimeStr=ctime(&CurrentTime);
-	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Calculating bias-corrected length."<<endl;
-
-	// clear variable
-	corrections.clear();
-	for (int32_t i = 0; i < sequences.size(); i++) {
-		cout << i <<"\t"<< sequences[i].size() << endl;
-		Eigen::MatrixXd tmp = Eigen::MatrixXd::Zero(sequences[i].size(), sequences[i].size());
-		corrections.push_back(tmp);
-	}
-	corrections.shrink_to_fit();
-
-	// calculate bias corrected length per position
-	mutex corrections_mutex;
-	omp_set_num_threads(threads);
-	#pragma omp parallel for
-	for(int32_t i = 0; i < sequences.size(); i++){
-		if(sequences[i].size() < seqbias.contextLeft+seqbias.contextRight+1){
-			cout <<"Not calculating effective length due to too-short length: "<< sequences[i] <<"\t"<< (sequences[i].size()) << endl;
-			continue;
+	// process GC condition
+	// count the number of G and C around the fragment start (FW) and end (RC) position within contextLeft and contextRight
+	// use GCWindowFW and GCWindowRC to indicate the number if counted among how many nucleotides (window size)
+	vector<int32_t> GCCondFW(region_end - region_start, 0);
+	vector<int32_t> GCCondRC(region_end - region_start, 0);
+	vector<int32_t> GCWindowFW(region_end - region_start, 0);
+	vector<int32_t> GCWindowRC(region_end - region_start, 0);
+	for(int32_t i = region_start; i < region_end; i++){
+		int32_t gcFWcount = 0, gcRCcount = 0;
+		for(int32_t j = i-gcbias.contextLeft; j < i+gcbias.contextRight+1; j++){
+			if(j >= 0 && j < seq.size())
+				if(seq[j]=='G' || seq[j]=='g' || seq[j]=='C' || seq[j]=='c')
+					gcFWcount++;
 		}
-		Eigen::MatrixXd tmp_correction = BiasEffLen_matrix(sequences[i], gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
-		lock_guard<std::mutex> guard(corrections_mutex);
-		corrections[i] = tmp_correction;
+		GCCondFW[i - region_start] = gcFWcount;
+		GCWindowFW[i - region_start] = ( min(i+gcbias.contextRight+1, (int)seq.size()) - max(0, i-gcbias.contextLeft) );
+		for(int32_t j = i+gcbias.contextLeft; j > i-gcbias.contextRight-1; j--){
+			if(j >= 0 && j < seq.size())
+				if(seq[j]=='G' || seq[j]=='g' || seq[j]=='C' || seq[j]=='c')
+					gcRCcount++;
+		}
+		GCCondRC[i - region_start] = gcRCcount;
+		GCWindowRC[i - region_start] = ( min((int)seq.size(), i+gcbias.contextLeft+1) - max(0, i-gcbias.contextRight) );
+	}
+	// process GC content vector
+	// this is for calculating GC percentage of the entire fragment
+	vector<int32_t> GCRawCount(region_end - region_start + 1, 0);
+	int32_t cummulative=0;
+	for(int32_t i = region_start; i < region_end; i++){
+		if(seq[i]=='G' || seq[i]=='g' || seq[i]=='C' || seq[i]=='c'){
+			cummulative++;
+		}
+		GCRawCount[i - region_start + 1]=cummulative;
 	}
 
-	time(&CurrentTime);
-	CurrentTimeStr=ctime(&CurrentTime);
-	cout << "[" << CurrentTimeStr.substr(0, CurrentTimeStr.size()-1) << "] " << "Finish.\n";
-};*/
+	// SEQbias
+	// process 5' seqbias positional ratio
+	vector<double> Seq5Ratio(region_end - region_start, 1);
+	vector<double> Seq3Ratio(region_end - region_start, 1);
+	Mer mer;
+	mer.k(seqbias.contextLeft + seqbias.contextRight + 1);
+	mer.from_chars(seq.c_str());
+	for(int32_t i = region_start + seqbias.contextLeft; i < region_end-seqbias.contextRight; i++){
+		double obsvalue=0, expvalue=0;
+		for(int32_t j = 0; j < seqbias.contextLeft+seqbias.contextRight+1; j++){
+			int32_t idx = mer.get_bits(seqbias.shifts[j], seqbias.widths[j]);
+			obsvalue += seqbias.Obs5Probs(idx, j);
+			expvalue += seqbias.Exp5Probs(idx, j);
+		}
+		Seq5Ratio[i - region_start] = exp(obsvalue-expvalue);
+		mer.shift_left(seq[i+seqbias.contextRight+1]);
+	}
+	// process 3' seqbias positional ratio
+	string rcseq = ReverseComplement(seq.cbegin() + region_start, seq.cbegin() + region_end);
+	assert( rcseq.size() == region_end - region_start );
+	mer.from_chars(rcseq.c_str());
+	for(int32_t i = seqbias.contextLeft; i < rcseq.size()-seqbias.contextRight; i++){
+		double obsvalue=0, expvalue=0;
+		for(int32_t j = 0; j < seqbias.contextLeft+seqbias.contextRight+1; j++){
+			int32_t idx=mer.get_bits(seqbias.shifts[j], seqbias.widths[j]);
+			obsvalue+=seqbias.Obs3Probs(idx, j);
+			expvalue+=seqbias.Exp3Probs(idx, j);
+		}
+		Seq3Ratio[i]=exp(obsvalue-expvalue);
+		mer.shift_left(rcseq[i+seqbias.contextRight+1]);
+	}
+	reverse(Seq3Ratio.begin(), Seq3Ratio.end());
+
+	// process 5' and 3' posbias
+	vector<double> Pos5Ratio(region_end - region_start, 1);
+	vector<double> Pos3Ratio(region_end - region_start, 1);
+	int32_t li = posbias.lenClass((int32_t)seq.size());
+	for(int32_t i = region_start; i < region_end-(seqbias.contextLeft+seqbias.contextRight+1); i++){
+		double fracP = 1.0*i/seq.size();
+		double obs5 = max(0.001, posbias.obs5Splines[li](fracP));
+		double obs3 = max(0.001, posbias.obs3Splines[li](fracP));
+		double exp5 = max(0.001, posbias.exp5Splines[li](fracP));
+		double exp3 = max(0.001, posbias.exp3Splines[li](fracP));
+		Pos5Ratio[i - region_start] = obs5/exp5;
+		Pos3Ratio[i - region_start] = obs3/exp3;
+	}
+
+	// calculate total number of possible fragments
+	double FragCount=0;
+	int32_t minFLDpossible=(seq.size()<FLD.size())?1:fldLow;
+	int32_t maxFLDpossible=(seq.size()<FLD.size())?seq.size():fldHigh;
+	for(int32_t i = 0; i < maxFLDpossible; i++)
+		FragCount += FLD[i];
+
+	double bias = 0;
+	// calculate the multiplier of generating a k length fragment at position i
+	for(int32_t k = minFLDpossible; k < maxFLDpossible; k++){
+		for(int32_t i = region_start; i < region_end-k-1; i++){
+			// seqBias
+			double seq5factor = Seq5Ratio[i - region_start];
+			double seq3factor = Seq3Ratio[i - region_start +k-1];
+			// gcBias
+			double gcfactor;
+			double gccondition = 1.0*(GCCondFW[i - region_start]+GCCondRC[i - region_start +k-1])/(GCWindowFW[i - region_start]+GCWindowRC[i - region_start +k-1]);
+			int32_t gccondbin = (int32_t)(gccondition*gcbias.Condbin);
+			if(gccondbin == gcbias.Condbin)
+				gccondbin--;
+			double gcfraction = 1.0*(GCRawCount[i - region_start+k]-GCRawCount[i - region_start])/k;
+			int32_t gcbin = (int32_t)(gcbias.GCbin*lrint(gcfraction*100)/100.0);
+			if(gcbin == gcbias.GCbin)
+				gcbin--;
+			gcfactor = gcbias.GCBiasRatio(gccondbin, gcbin);
+			// posBias
+			double posfactor = Pos5Ratio[i - region_start]*Pos3Ratio[i - region_start +k-1];
+			if ((FLD[k]) > 0 && seq5factor > 0 && seq3factor > 0 && gcfactor > 0 && posfactor > 0)
+				bias += 1.0 * (FLD[k]) * seq5factor * seq3factor * gcfactor * posfactor / FragCount;
+		}
+	}
+
+	return bias;
+};
 
 
 void ProcessBias_matrix(const vector<string>& sequences, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, 
@@ -679,4 +762,24 @@ void AdjustBias(vector< vector< tuple<int32_t,int32_t,double> > >& corrections, 
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout << "[" << CurrentTimeStr.substr(0, CurrentTimeStr.size()-1) << "] " << "Finish. " << num_skipped << " are skipped.\n";
+};
+
+
+void AdjustBias_single(vector< tuple<int32_t,int32_t,double> >& bias, const string& tname, const double& efflen)
+{
+	if (efflen == 0)
+		return;
+
+	// calculate current sum
+	double s = 0;
+	for (int32_t j = 0; j < bias.size(); j++)
+		s += get<2>(bias[j]);
+	for (int32_t j = 0; j < bias.size(); j++)
+		get<2>(bias[j]) *= efflen / s;
+	// sanity check: the changed bias has been updated
+	double new_s = 0;
+	for (int32_t j = 0; j < bias.size(); j++)
+		new_s += get<2>(bias[j]);
+	assert(fabs(new_s - efflen) < 1e-3);
+
 };

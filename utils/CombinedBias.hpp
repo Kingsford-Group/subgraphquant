@@ -36,13 +36,13 @@ void FLDKDE(vector<int32_t>& RawFLD, vector<double>& FLD, int32_t kernel_n=10, d
 void GetFLDbound(const vector<double>& FLD, int32_t& fldLow, int32_t& fldHigh);
 
 
-vector<double> BiasEffLen_coverage(const string seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh);
+vector<double> BiasEffLen_coverage(const string& seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh);
 
 
-vector<double> BiasEffLen_fragstart(const string seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh);
+vector<double> BiasEffLen_fragstart(const string& seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh);
 
 
-vector< tuple<int32_t,int32_t,double> > BiasEffLen_matrix(const string seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh);
+vector< tuple<int32_t,int32_t,double> > BiasEffLen_matrix(const string& seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh);
 
 
 void ProcessBias_coverage(const vector<string>& sequences, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const vector<double>& FLD,
@@ -53,6 +53,10 @@ void ProcessBias_fragstart(const vector<string>& sequences, const GCBiasModel_t&
 	vector< vector<double> >& corrections, int32_t fldLow, int32_t fldHigh, int32_t threads=8);
 
 
+double RegionalBias_fragstart(const string & seq, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD,
+	int32_t fldLow, int32_t fldHigh, int32_t region_start, int32_t region_end);
+
+
 void ProcessBias_matrix(const vector<string>& sequences, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD,
 	vector< vector< tuple<int32_t,int32_t,double> > >& corrections, int32_t fldLow, int32_t fldHigh, int32_t threads=8);
 
@@ -60,5 +64,7 @@ void ProcessBias_matrix(const vector<string>& sequences, const GCBiasModel_t& gc
 void AdjustBias(vector< vector<double> >& corrections, const vector<string>& transnames,string salmonquantfile);
 
 void AdjustBias(vector< vector< tuple<int32_t,int32_t,double> > >& corrections, const vector<string>& transnames,string salmonquantfile);
+
+void AdjustBias_single(vector< tuple<int32_t,int32_t,double> >& bias, const string& tname, const double& efflen);
 
 #endif
