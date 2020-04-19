@@ -95,6 +95,39 @@ map< string, vector< vector<int32_t> > > Remove_source_sink(const map< string, v
 };
 
 
+void ReadSimpleEdges(string simpleedgefile, map< string, vector< vector<int32_t> > >& se_nodes)
+{
+	se_nodes.clear();
+
+	ifstream input(simpleedgefile);
+	string line;
+	while (getline(input, line)) {
+		if (line[0] == '#')
+			continue;
+		vector<string> strs;
+		boost::split(strs, line, boost::is_any_of("\t"));
+
+		vector<string> strnode_list;
+		boost::split(strnode_list, strs[1], boost::is_any_of(","));
+		// type convert
+		string g_id = strs[0];
+		vector<int32_t> nodes;
+		for (string & s : strnode_list)
+			nodes.push_back( stoi(s) );
+		// add to the map
+		map< string, vector< vector<int32_t> > >::iterator it = se_nodes.find(g_id);
+		if (it == se_nodes.end()) {
+			vector< vector<int32_t> > tmp;
+			tmp.push_back( nodes );
+			se_nodes[g_id] = tmp;
+		}
+		else
+			(it->second).push_back( nodes );
+	}
+	input.close();
+};
+
+
 // the following function is deprecated
 void ReadEq_GeneNodes(string eqfile, map< string, vector< vector<int32_t> > >& eq_nodes)
 {
@@ -304,7 +337,8 @@ vector<double> per_gene_path_bias2(const GeneGraph_t& g, const vector< vector<in
 };
 
 
-vector<double> per_gene_path_bias(const GeneGraph_t& g, const vector< vector<int32_t> >& path_nodelist, const map<string, string>& trans_seqs, const map<string,double>& trans_expr,
+vector<double> per_gene_path_bias3(const GeneGraph_t& g, const vector< vector<int32_t> >& eq_nodelist, 
+	const vector< vector<int32_t> >& se_nodelist, const map<string, string>& trans_seqs, const map<string,double>& trans_expr, const map<string,double>& trans_salmon_efflen, 
 	const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh)
 {
 	// a map from transcript name to the node list
@@ -326,27 +360,60 @@ vector<double> per_gene_path_bias(const GeneGraph_t& g, const vector< vector<int
 	}
 
 	// result vector
-	vector<double> path_efflen(path_nodelist.size(), 0);
+	vector<double> eq_nodes_efflen(eq_nodelist.size(), 0);
+	vector<double> se_nodes_efflen(se_nodelist.size(), 0);
+
+	// matrix form of effective length of all positions in each transcript
+	map< string, vector< tuple<int32_t,int32_t,double> > > trans_matrix_efflen;
+
+	// position-wise bias correction/efflen for reference transcripts
+	for (map< string,vector<int32_t> >::iterator it = trans_nodelist.begin(); it != trans_nodelist.end(); it++) {
+		const string& t = it->first;
+		const string& seq = trans_seqs.at(t);
+		const double& efflen = trans_salmon_efflen.at(t);
+		if (seq.size() < seqbias.contextLeft+seqbias.contextRight+1)
+			continue;
+		vector< tuple<int32_t,int32_t,double> > tmp = BiasEffLen_matrix(trans_seqs.at(t), gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
+		AdjustBias_single(tmp, t, efflen);
+
+		trans_matrix_efflen[t] = tmp;
+	}
 
 	// for each path, find the transcript that it is a substring of
-	for (int32_t i = 0; i < path_nodelist.size(); i++) {
-		const vector<int32_t>& nl = path_nodelist[i];
+	for (int32_t i = 0; i < eq_nodelist.size(); i++) {
+		const vector<int32_t>& nl = eq_nodelist[i];
 		vector<string> related_trans;
 		vector<double> related_expr;
 		vector<double> related_bias;
 		for (map< string,vector<int32_t> >::const_iterator it = trans_nodelist.cbegin(); it != trans_nodelist.cend(); it++) {
-			// check whether the path node list falls into transcript node list
+			const string& t = it->first;
+			const string& seq = trans_seqs.at(t);
+			if (seq.size() < seqbias.contextLeft+seqbias.contextRight+1)
+				continue;
 			pair<int32_t, int32_t> region;
+			// check whether the path node list falls into transcript node list
 			if ( is_path_exist(nl, it->second, g, region) ) {
 				related_trans.push_back( it->first );
 				related_expr.push_back( trans_expr.at(it->first) );
-				// find the transcript sequence
-				map<string,string>::const_iterator itseq = trans_seqs.find( it->first );
-				assert(itseq != trans_seqs.cend());
-				double bias = RegionalBias_fragstart(itseq->second, gcbias, seqbias, posbias, FLD, fldLow, fldHigh, region.first, region.second);
-				related_bias.push_back( bias );
+				// calculate first and last node length in the query list
+				int32_t nodelen_first = g.vNodes[nl.front()].EndPos - g.vNodes[nl.front()].StartPos;
+				int32_t nodelen_last = g.vNodes[nl.back()].EndPos - g.vNodes[nl.back()].StartPos;
+				// calculate bias
+				const vector< tuple<int32_t,int32_t,double> >& matrix_bias = trans_matrix_efflen.at( t );
+				double this_bias = 0.0;
+				for (vector< tuple<int32_t,int32_t,double> >::const_iterator ittuple = matrix_bias.cbegin(); ittuple != matrix_bias.cend(); ittuple++) {
+					if (get<0>(*ittuple) >= region.first && get<0>(*ittuple) < region.first + nodelen_first && get<1>(*ittuple) < region.second && get<1>(*ittuple) >= region.second - nodelen_last)
+						this_bias += get<2>(*ittuple);
+				}
+				related_bias.push_back( this_bias );
 			}
 		}
+
+		if (related_trans.size() == 0) {
+			eq_nodes_efflen[i] = 0;
+			continue;
+		}
+
 		assert( related_trans.size() != 0 );
 		assert( related_trans.size() == related_expr.size() );
 		assert( related_trans.size() == related_bias.size() );
@@ -357,23 +424,81 @@ vector<double> per_gene_path_bias(const GeneGraph_t& g, const vector< vector<int
 				zero_expr = false;
 		}
 		if (zero_expr) {
-			path_efflen[i] = std::accumulate(related_bias.begin(), related_bias.end(), 0.0);
-			path_efflen[i] /= related_bias.size();
+			eq_nodes_efflen[i] = std::accumulate(related_bias.begin(), related_bias.end(), 0.0);
+			eq_nodes_efflen[i] /= related_bias.size();
 		}
 		else {
 			vector<double> ele_mul(related_bias.size(), 0.0);
 			std::transform(related_bias.begin(), related_bias.end(), related_expr.begin(), ele_mul.begin(), std::multiplies<double>() );
-			path_efflen[i] = std::accumulate(ele_mul.begin(), ele_mul.end(), 0.0) / std::accumulate(related_expr.begin(), related_expr.end(), 0.0);
+			eq_nodes_efflen[i] = std::accumulate(ele_mul.begin(), ele_mul.end(), 0.0) / std::accumulate(related_expr.begin(), related_expr.end(), 0.0);
 		}
 	}
 
-	return path_efflen;
+	// for each path, find the transcript that it is a substring of
+	for (int32_t i = 0; i < se_nodelist.size(); i++) {
+		const vector<int32_t>& nl = se_nodelist[i];
+		vector<string> related_trans;
+		vector<double> related_expr;
+		vector<double> related_bias;
+		for (map< string,vector<int32_t> >::const_iterator it = trans_nodelist.cbegin(); it != trans_nodelist.cend(); it++) {
+			const string& t = it->first;
+			const string& seq = trans_seqs.at(t);
+			if (seq.size() < seqbias.contextLeft+seqbias.contextRight+1)
+				continue;
+			pair<int32_t, int32_t> region;
+			// check whether the path node list falls into transcript node list
+			if ( is_path_exist(nl, it->second, g, region) ) {
+				related_trans.push_back( it->first );
+				related_expr.push_back( trans_expr.at(it->first) );
+				// calculate first and last node length in the query list
+				int32_t nodelen_first = g.vNodes[nl.front()].EndPos - g.vNodes[nl.front()].StartPos;
+				int32_t nodelen_last = g.vNodes[nl.back()].EndPos - g.vNodes[nl.back()].StartPos;
+				// calculate bias
+				const vector< tuple<int32_t,int32_t,double> >& matrix_bias = trans_matrix_efflen.at( t );
+				double this_bias = 0.0;
+				for (vector< tuple<int32_t,int32_t,double> >::const_iterator ittuple = matrix_bias.cbegin(); ittuple != matrix_bias.cend(); ittuple++) {
+					if (get<0>(*ittuple) >= region.first && get<0>(*ittuple) < region.first + nodelen_first && get<1>(*ittuple) < region.second && get<1>(*ittuple) >= region.second - nodelen_last)
+						this_bias += get<2>(*ittuple);
+				}
+				related_bias.push_back( this_bias );
+			}
+		}
+
+		if (related_trans.size() == 0) {
+			se_nodes_efflen[i] = 0;
+			continue;
+		}
+
+		assert( related_trans.size() != 0 );
+		assert( related_trans.size() == related_expr.size() );
+		assert( related_trans.size() == related_bias.size() );
+		// weight average of bias weighted by salmon expression (if not all zero), or simple average if the expressions of related transcripts are all zero.
+		bool zero_expr = true;
+		for (const double& e : related_expr) {
+			if (fabs(e) > 1e-4)
+				zero_expr = false;
+		}
+		if (zero_expr) {
+			se_nodes_efflen[i] = std::accumulate(related_bias.begin(), related_bias.end(), 0.0);
+			se_nodes_efflen[i] /= related_bias.size();
+		}
+		else {
+			vector<double> ele_mul(related_bias.size(), 0.0);
+			std::transform(related_bias.begin(), related_bias.end(), related_expr.begin(), ele_mul.begin(), std::multiplies<double>() );
+			se_nodes_efflen[i] = std::accumulate(ele_mul.begin(), ele_mul.end(), 0.0) / std::accumulate(related_expr.begin(), related_expr.end(), 0.0);
+		}
+	}
+
+	// return: concatenation of eq_nodes effective length and simple_edge_nodes effective length
+	eq_nodes_efflen.insert(eq_nodes_efflen.end(), se_nodes_efflen.begin(), se_nodes_efflen.end());
+	return eq_nodes_efflen;
 };
 
 
-map< string,vector<double> > process_hyperedge_efflen(const vector<GeneGraph_t>& GeneGraphs, const map< string, vector< vector<int32_t> > >& eq_nodes, const map< string,int32_t >& TransIndex,
-	const vector<string>& sequences, const vector<double>& expr, const vector<double>& salmon_efflen, const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, 
-	const vector<double>& FLD, int32_t fldLow, int32_t fldHigh, int32_t threads=4)
+void process_hyperedge_efflen(map< string,vector<double> >& result_eq_efflen, map< string,vector<double> >& result_se_efflen, 
+	const vector<GeneGraph_t>& GeneGraphs, const map< string, vector< vector<int32_t> > >& eq_nodes, const map< string, vector< vector<int32_t> > >& se_nodes, 
+	const map< string,int32_t >& TransIndex, const vector<string>& sequences, const vector<double>& expr, const vector<double>& salmon_efflen, 
+	const GCBiasModel_t& gcbias, const SeqBiasModel_t& seqbias, const PosBiasModel_t& posbias, const vector<double>& FLD, int32_t fldLow, int32_t fldHigh, int32_t threads=4)
 {
 	time_t CurrentTime;
 	string CurrentTimeStr;
@@ -382,7 +507,8 @@ map< string,vector<double> > process_hyperedge_efflen(const vector<GeneGraph_t>&
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Calculating bias-corrected length."<<endl;
 
 	// result
-	map< string,vector<double> > result_efflen;
+	result_eq_efflen.clear();
+	result_se_efflen.clear();
 
 	ProgressBar progressBar(GeneGraphs.size(), 70);
 
@@ -390,8 +516,8 @@ map< string,vector<double> > process_hyperedge_efflen(const vector<GeneGraph_t>&
 	mutex corrections_mutex;
 	omp_set_num_threads(8);
 	#pragma omp parallel for
-	for (int32_t i = 0; i < 100; i++) {
-	// for (int32_t i = 0; i < GeneGraphs.size(); i++) {
+	// for (int32_t i = 0; i < 100; i++) {
+	for (int32_t i = 0; i < GeneGraphs.size(); i++) {
 		const GeneGraph_t& g = GeneGraphs[i];
 		map<string, string> trans_seqs;
 		map<string, double> trans_expr;
@@ -405,13 +531,29 @@ map< string,vector<double> > process_hyperedge_efflen(const vector<GeneGraph_t>&
 				trans_salmon_efflen[t] = salmon_efflen[ ittrans->second ];
 			}
 		}
-		vector<double> efflen;
-		map< string, vector< vector<int32_t> > >::const_iterator it = eq_nodes.find(g.GeneID);
-		if (it != eq_nodes.cend())
-			efflen = per_gene_path_bias2(g, it->second, trans_seqs, trans_expr, trans_salmon_efflen, gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
+		vector<double> eq_nodes_efflen;
+		vector<double> se_nodes_efflen;
+		map< string, vector< vector<int32_t> > >::const_iterator it_eq = eq_nodes.find(g.GeneID);
+		map< string, vector< vector<int32_t> > >::const_iterator it_se = se_nodes.find(g.GeneID);
+		if (it_eq != eq_nodes.cend()) {
+			assert(it_se != se_nodes.cend());
+			// efflen = per_gene_path_bias2(g, it->second, trans_seqs, trans_expr, trans_salmon_efflen, gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
+			eq_nodes_efflen = per_gene_path_bias3(g, it_eq->second, it_se->second, trans_seqs, trans_expr, trans_salmon_efflen, gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
+			int32_t n_lists_eq = (it_eq->second).size();
+			int32_t n_lists_se = (it_se->second).size();
+			se_nodes_efflen.insert(se_nodes_efflen.end(), eq_nodes_efflen.begin() + n_lists_eq, eq_nodes_efflen.end());
+			assert(eq_nodes_efflen.size() == n_lists_eq + n_lists_se);
+			assert(se_nodes_efflen.size() == n_lists_se);
+			eq_nodes_efflen.resize(n_lists_eq);
+		}
 		
 		lock_guard<std::mutex> guard(corrections_mutex);
-		result_efflen[g.GeneID] = efflen;
+		result_eq_efflen[g.GeneID] = eq_nodes_efflen;
+		result_se_efflen[g.GeneID] = se_nodes_efflen;
+		if (it_eq != eq_nodes.cend() && eq_nodes_efflen.size() != (it_eq->second).size())
+			cout << "watch here\n";
+		if (it_eq != eq_nodes.cend() && se_nodes_efflen.size() != (it_se->second).size())
+			cout << "watch here.\n";
 		++progressBar;
 		progressBar.display();
 	}
@@ -420,8 +562,6 @@ map< string,vector<double> > process_hyperedge_efflen(const vector<GeneGraph_t>&
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout << "[" << CurrentTimeStr.substr(0, CurrentTimeStr.size()-1) << "] " << "Finish.\n";
-
-	return result_efflen;
 };
 
 
@@ -472,17 +612,19 @@ bool sanity_check(const vector<GeneGraph_t>& GeneGraphs, const map< string, vect
 };
 
 
-void write_hyperedge_efflen(string outputfile, const map< string,vector<double> >& result_efflen, const map< string, vector< vector<int32_t> > >& eq_nodes)
+void write_hyperedge_efflen(string outputfile, const map< string,vector<double> >& hyperedge_efflen, const map< string, vector< vector<int32_t> > >& eq_nodes)
 {
 	ofstream output(outputfile, ios::out);
 	output << "# gene\tnode_list\tefflen\n";
 
 	for (map< string, vector< vector<int32_t> > >::const_iterator it = eq_nodes.cbegin(); it != eq_nodes.cend(); it++) {
 		// find the hyperedge effective length
-		map< string,vector<double> >::const_iterator it_len = result_efflen.find( it->first );
-		if (it_len == result_efflen.cend())
+		map< string,vector<double> >::const_iterator it_len = hyperedge_efflen.find( it->first );
+		if (it_len == hyperedge_efflen.cend() || (it_len->second).size() == 0)
 			continue;
-		// assert( it_len != result_efflen.cend() );
+		// assert( it_len != hyperedge_efflen.cend() );
+		if ( (it_len->second).size() != (it->second).size() )
+			cout << "watch here\t" << (it->first) <<"\n";
 		assert( (it_len->second).size() == (it->second).size() );
 
 		for (int32_t i = 0; i < (it->second).size(); i++) {
@@ -594,8 +736,9 @@ int32_t main(int32_t argc, char* argv[])
 	string prefix = argv[4];
 
 	string graphfile = prefix + "_graph_fragstart_beforebias.txt";
-	string pathfile = prefix + "_paths_of_trie.txt";
+	string simpleedgefile = prefix + "_simpleedge_to_path.txt";
 	string output_efflen_hyperedge = prefix + "_hyperedge_efflen.txt";
+	string output_efflen_simpleedge = prefix + "_simpleedge_efflen.txt";
 	string output_efflen_prefix = prefix + "_path_efflen.txt";
 	size_t t = prefix.find_last_of("/");
 	string eqfile = prefix.substr(0, t) + "/eq_classes.txt";
@@ -636,6 +779,10 @@ int32_t main(int32_t argc, char* argv[])
 	bool all_path_exist = sanity_check(GeneGraphs, eq_nodes);
 	assert(all_path_exist);
 
+	// read node lists corresponding to simple edges (single node or pair of connected nodes
+	map< string, vector< vector<int32_t> > > se_nodes;
+	ReadSimpleEdges(simpleedgefile, se_nodes);
+
 	// reading bias profiles
 	vector<int32_t> RawFLD;
 	vector<double> FLD;
@@ -648,15 +795,15 @@ int32_t main(int32_t argc, char* argv[])
 	PosBiasModel_t posbias(salmonauxfolder+"/obs5_pos.gz", salmonauxfolder+"/obs3_pos.gz", salmonauxfolder+"/exp5_pos.gz", salmonauxfolder+"/exp3_pos.gz");
 
 
-	map< string,vector<double> > result_efflen = process_hyperedge_efflen(GeneGraphs, eq_nodes, TransIndex, sequences, expr, 
+	map< string,vector<double> > hyperedge_efflen;
+	map< string,vector<double> > simpleedge_efflen;
+	process_hyperedge_efflen(hyperedge_efflen, simpleedge_efflen, GeneGraphs, eq_nodes, se_nodes, TransIndex, sequences, expr, 
 		salmon_efflen, gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
 
-	write_hyperedge_efflen(output_efflen_hyperedge, result_efflen, eq_nodes);
+	write_hyperedge_efflen(output_efflen_hyperedge, hyperedge_efflen, eq_nodes);
+	write_hyperedge_efflen(output_efflen_simpleedge, simpleedge_efflen, se_nodes);
 
-	// read paths that occur in reads
-	map< string, vector< vector<int32_t> > > original_eq_nodes;
-	ReadPrefixPaths(pathfile, original_eq_nodes);
-	eq_nodes = Remove_source_sink(original_eq_nodes, GeneGraphs);
+	// ReadPrefixPaths(pathfile, prefix_paths);
 
 	// write_path_efflen_inorder(output_efflen_prefix, result_efflen, eq_nodes, original_eq_nodes, GeneGraphs);
 };
