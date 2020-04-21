@@ -9,10 +9,12 @@ import copy
 
 
 class IpoptObject_split(object):
-	def __init__(self, g, efflen_edgewise, eq_classes):
+	def __init__(self, g, efflen_simple_paths, efflen_hyper_paths, eq_classes):
+		# note that efflen_simple_paths contain a list of splice graph node list, prefix graph edges and the efflen
+		# but efflen_hyper_paths contains the equivalent class mapping node lists and the efflen
 		# graph info
 		self.gid = g._name
-		self.efflen = efflen_edgewise
+		self.efflen = np.zeros(len(g.edges))
 		self.nodes = g.nodes
 		self.edges = g.edges
 		self.edge_groups = []
@@ -28,6 +30,31 @@ class IpoptObject_split(object):
 		self.nnzj = 2 * len(self.edges) - len([e for e in self.edges if e[0] == 0 or e[1]+1 == len(self.nodes)]) + self.n_var # number of non-zeros in the constraint jacobian
 		self.nnzh = int(self.n_var * (self.n_var + 1) / 2) # number of non-zeros in the lagrangian hessian
 		print("nnzj = {}\tnnzh = {}".format(self.nnzj, self.nnzh))
+		# process effective length due to normalization constraint: sum c_p l_p = const
+		# map to prefix graph edges: sum_p c_p l_p = sum_p (sum_{e in AS(p)} f_e) l_p = sum_e f_e (sum_{p: e in AS(p)} l_p)
+		# prefix graph edge effective length is sum_{p: e in AS(p)} l_p
+		processed_nl = []
+		for info in efflen_simple_paths:
+			(nodelist, edgelist, value) = info
+			self.efflen[np.array(edgelist)] += value
+			processed_nl.append( tuple(nodelist) )
+		processed_nl = set(processed_nl)
+		for info in efflen_hyper_paths:
+			(nodelist, value) = info
+			# find the corresponding edges by eq_classes
+			if tuple(nodelist) in processed_nl:
+				continue
+			whether_find = False
+			for eq in eq_classes:
+				for i in range(len(eq)):
+					if eq[i].gid == self.gid and tuple(nodelist) == tuple(eq[i].vpath):
+						self.efflen[ np.array(eq[i].new_edges) ] += value
+						processed_nl.add( tuple(nodelist) )
+						whether_find = True
+						break
+				if whether_find:
+					break
+			assert(whether_find)
 		# process weights
 		# temporary map for edge groups and its weights
 		egweight_fixed = {}
@@ -71,12 +98,14 @@ class IpoptObject_split(object):
 		self.weights = np.array([self.weights_fixed[i] + self.weights_changing[i] for i in range(len(self.weights_fixed))])
 		# calculate coefficient matrix of constraints
 		self.H = np.zeros( (len(self.nodes)-1, self.n_var) )
+		# flow balance
 		for i in range(len(self.edges)):
 			e = self.edges[i]
 			if e[0] != 0:
 				self.H[e[0] - 1, i] = -1
 			if e[1] != len(self.nodes) - 1:
 				self.H[e[1] - 1, i] = 1
+		# normalization to a constant
 		self.H[-1, :len(self.edges)] = np.array(self.efflen)
 		assert(len(np.where(self.H[:-1,] != 0)[0]) == self.nnzj - self.n_var)
 

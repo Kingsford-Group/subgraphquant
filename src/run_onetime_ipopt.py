@@ -90,42 +90,40 @@ if __name__=="__main__":
 			print("No more work need to do.")
 			sys.exit()
 
-		corrections = ReadCorrectedLength(prefix_graph + "_corrections_fragstart.dat")
-		Exp = ReadSalmonQuant(salmon_dir + "/quant.sf") 
-
 		graphs, eq_classes = load_data(prefix_graph)
-		old_node_efflens = CalculateOldNodeEffLen(prefix_graph + "_graph_fragstart.txt", Exp, corrections)
-		efflens = CalculateEdgewiseEffLen(graphs, old_node_efflens)
+		# efflens = ReadPathEfflen(prefix_graph + "_path_efflen.txt", graphs)
+		# assert( sanity_check_pathefflen(efflens, graphs) )
+		efflen_hyper = ReadEfflen_hyper(prefix_graph)
+		efflen_simple = ReadEfflen_simple(prefix_graph)
 
 		Gene_Eq_Index = {gname:[] for gname in graphs.keys()}
 		for i in range(len(eq_classes)):
 			for g in [ali.gid for ali in eq_classes[i]]:
 				Gene_Eq_Index[g].append(i)
-		for g in Gene_Eq_Index.keys():
-			Gene_Eq_Index[g] = list(set(Gene_Eq_Index[g]))
+		Gene_Eq_Index = {g:list(set(v)) for g,v in Gene_Eq_Index.items() if len(v) > 0}
 
-		Names = list(graphs.keys())
+		Names = list(Gene_Eq_Index.keys())
 		Names.sort()
 		NameIndex = {Names[i]:i for i in range(len(Names))}
-		Opts = [IpoptObject_split(graphs[gname], efflens[gname], [eq_classes[j] for j in Gene_Eq_Index[gname]]) for gname in Names]
+		Opts = [IpoptObject_split(graphs[gname], efflen_simple[gname], efflen_hyper[gname], [eq_classes[j] for j in Gene_Eq_Index[gname]]) for gname in Names]
 		Status = {}
 
-		# clip efflens to be 0.01 if the edge is not incident to the first node or the last node
-		count_changed = 0
-		for gname,g in graphs.items():
-			try:
-				fg = FlowGraph(g.edges, Opts[NameIndex[gname]].initialflow(), 0, len(g.nodes)-1)
-				for idx_e in np.where(efflens[gname] < 0.01)[0]:
-					if g.edges[idx_e][0] != 0 and g.edges[idx_e][1] != len(g.nodes) - 1:
-						tmp_edge_list, tmp_log_weights = fg.sample_centered_path(1, idx_e, weighted=True, seed=0)
-						if np.sum(efflens[gname][tmp_edge_list[0]]) < 0.01:
-							efflens[gname][tmp_edge_list[0][1:-1]] = 0.01
-							count_changed += 1
-			except:
-				print("failed on gene "+gname)
-		for opt in Opts:
-			opt.efflen = efflens[opt.gid]
-		print("In total {} effective lengths are adjusted.".format(count_changed))
+		# # clip efflens to be 0.01 if the edge is not incident to the first node or the last node
+		# count_changed = 0
+		# for gname,g in graphs.items():
+		# 	try:
+		# 		fg = FlowGraph(g.edges, Opts[NameIndex[gname]].initialflow(), 0, len(g.nodes)-1)
+		# 		for idx_e in np.where(efflens[gname] < 0.01)[0]:
+		# 			if g.edges[idx_e][0] != 0 and g.edges[idx_e][1] != len(g.nodes) - 1:
+		# 				tmp_edge_list, tmp_log_weights = fg.sample_centered_path(1, idx_e, weighted=True, seed=0)
+		# 				if np.sum(efflens[gname][tmp_edge_list[0]]) < 0.01:
+		# 					efflens[gname][tmp_edge_list[0][1:-1]] = 0.01
+		# 					count_changed += 1
+		# 	except:
+		# 		print("failed on gene "+gname)
+		# for opt in Opts:
+		# 	opt.efflen = efflens[opt.gid]
+		# print("In total {} effective lengths are adjusted.".format(count_changed))
 
 		pool = concurrent.futures.ProcessPoolExecutor(nthreads)
 		index = [i for i in range(len(Opts)) if np.sum(Opts[i].weights) > 0]
