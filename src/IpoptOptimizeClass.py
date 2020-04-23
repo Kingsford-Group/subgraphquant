@@ -62,6 +62,8 @@ class IpoptObject_split(object):
 		for eq in eq_classes:
 			if len(eq) == 1:
 				assert(eq[0].gid == self.gid)
+				if eq[0].weights < 1e-6:
+					continue
 				if tuple(eq[0].new_edges) in egweight_fixed:
 					egweight_fixed[tuple(eq[0].new_edges)] += eq[0].weights
 				else:
@@ -69,6 +71,8 @@ class IpoptObject_split(object):
 			else:
 				for i in range(len(eq)):
 					if eq[i].gid == self.gid:
+						if eq[i].weights < 1e-6:
+							continue
 						if tuple(eq[i].new_edges) in egweight_changing:
 							egweight_changing[tuple(eq[i].new_edges)] += eq[i].weights
 						else:
