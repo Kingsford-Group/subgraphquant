@@ -6,37 +6,32 @@ import scipy.optimize
 import pyipopt
 import tqdm
 import copy
+import networkx as nx
 
 
 class IpoptObject_split(object):
-	def __init__(self, g, efflen_simple_paths, efflen_hyper_paths, eq_classes):
+	def __init__(self, g, efflen_simple_paths, efflen_hyper_paths, eq_classes, forbidden_edges = []):
 		# note that efflen_simple_paths contain a list of splice graph node list, prefix graph edges and the efflen
 		# but efflen_hyper_paths contains the equivalent class mapping node lists and the efflen
 		# graph info
 		self.gid = g._name
-		self.efflen = np.zeros(len(g.edges))
 		self.nodes = g.nodes
 		self.edges = g.edges
+		self.efflen = np.zeros(len(self.edges))
 		self.edge_groups = []
 		self.edge_group_releindicator = []
 		self.weights = []
 		self.weights_fixed = []
 		self.weights_changing = []
 		self.results = None
-		# ipopt info
-		self.n_var = len(self.edges)
-		self.n_cons = len(self.nodes) - 1 # flow, sum of reads
-		print("n_var = {}\tn_cons = {}".format(self.n_var, self.n_cons))
-		self.nnzj = 2 * len(self.edges) - len([e for e in self.edges if e[0] == 0 or e[1]+1 == len(self.nodes)]) + self.n_var # number of non-zeros in the constraint jacobian
-		self.nnzh = int(self.n_var * (self.n_var + 1) / 2) # number of non-zeros in the lagrangian hessian
-		print("nnzj = {}\tnnzh = {}".format(self.nnzj, self.nnzh))
+		forbidden_edges = set(forbidden_edges)
 		# process effective length due to normalization constraint: sum c_p l_p = const
 		# map to prefix graph edges: sum_p c_p l_p = sum_p (sum_{e in AS(p)} f_e) l_p = sum_e f_e (sum_{p: e in AS(p)} l_p)
 		# prefix graph edge effective length is sum_{p: e in AS(p)} l_p
 		processed_nl = []
 		for info in efflen_simple_paths:
 			(nodelist, edgelist, value) = info
-			self.efflen[np.array(edgelist)] += value
+			self.efflen[np.array([x for x in edgelist if not (x in forbidden_edges)])] += value
 			processed_nl.append( tuple(nodelist) )
 		processed_nl = set(processed_nl)
 		for info in efflen_hyper_paths:
@@ -48,6 +43,7 @@ class IpoptObject_split(object):
 			for eq in eq_classes:
 				for i in range(len(eq)):
 					if eq[i].gid == self.gid and tuple(nodelist) == tuple(eq[i].vpath):
+						assert( len(forbidden_edges & set(eq[i].new_edges)) == 0 )
 						self.efflen[ np.array(eq[i].new_edges) ] += value
 						processed_nl.add( tuple(nodelist) )
 						whether_find = True
@@ -71,12 +67,11 @@ class IpoptObject_split(object):
 			else:
 				for i in range(len(eq)):
 					if eq[i].gid == self.gid:
-						if eq[i].weights < 1e-6:
-							continue
-						if tuple(eq[i].new_edges) in egweight_changing:
-							egweight_changing[tuple(eq[i].new_edges)] += eq[i].weights
-						else:
-							egweight_changing[tuple(eq[i].new_edges)] = eq[i].weights
+						if eq[i].weights > 1e-6:
+							if tuple(eq[i].new_edges) in egweight_changing:
+								egweight_changing[tuple(eq[i].new_edges)] += eq[i].weights
+							else:
+								egweight_changing[tuple(eq[i].new_edges)] = eq[i].weights
 					# if tuple(eq[i].new_edges) in egweight_changing:
 					# 		egweight_changing[tuple(eq[i].new_edges)] += eq[i].weights
 					# 	else:
@@ -85,7 +80,7 @@ class IpoptObject_split(object):
 		self.edge_groups = list(set(egweight_fixed.keys()) | set(egweight_changing.keys()))
 		self.edge_groups.sort()
 		for eg in self.edge_groups:
-			tmp = np.zeros(self.n_var)
+			tmp = np.zeros(len(self.edges))
 			tmp[np.array(eg)] = 1
 			self.edge_group_releindicator.append(tmp)
 		for k in self.edge_groups:
@@ -98,10 +93,17 @@ class IpoptObject_split(object):
 			else:
 				self.weights_changing.append( 0 )
 		assert(len(self.weights_fixed) == len(self.weights_changing))
+		# remove forbidden edges from the graph
+		remaining_edges = np.array( list(set(list(range(len(self.edges)))) - forbidden_edges) )
+		self.edges = [self.edges[i] for i in range(len(self.edges)) if not (i in forbidden_edges)]
+		self.efflen = self.efflen[remaining_edges]
+		self.edge_group_releindicator = [x[remaining_edges] for x in self.edge_group_releindicator]
+		assert( len(self.efflen) == len(self.edges) )
+		assert(len(self.edge_group_releindicator[0]) == len(self.edges))
 		# update total weights_fixed
 		self.weights = np.array([self.weights_fixed[i] + self.weights_changing[i] for i in range(len(self.weights_fixed))])
 		# calculate coefficient matrix of constraints
-		self.H = np.zeros( (len(self.nodes)-1, self.n_var) )
+		self.H = np.zeros( (len(self.nodes)-1, len(self.edges)) )
 		# flow balance
 		for i in range(len(self.edges)):
 			e = self.edges[i]
@@ -111,7 +113,13 @@ class IpoptObject_split(object):
 				self.H[e[1] - 1, i] = 1
 		# normalization to a constant
 		self.H[-1, :len(self.edges)] = np.array(self.efflen)
-		assert(len(np.where(self.H[:-1,] != 0)[0]) == self.nnzj - self.n_var)
+		# ipopt info
+		self.n_var = len(self.edges)
+		self.n_cons = len(self.nodes) - 1 # flow, sum of reads, forbidden edges
+		print("n_var = {}\tn_cons = {}".format(self.n_var, self.n_cons))
+		self.nnzj = 2 * len(self.edges) - len([e for e in self.edges if e[0] == 0 or e[1]+1 == len(self.nodes)]) + self.n_var # number of non-zeros in the constraint jacobian
+		self.nnzh = int(self.n_var * (self.n_var + 1) / 2) # number of non-zeros in the lagrangian hessian
+		print("nnzj = {}\tnnzh = {}".format(self.nnzj, self.nnzh))
 
 	def bound_variables(self):
 		return np.zeros(self.n_var), np.inf * np.ones(self.n_var)
@@ -173,6 +181,20 @@ class IpoptObject_split(object):
 			index = np.tril_indices(self.n_var)
 			return hess[index]
 
+	# def initialflow(self, numreads = 100):
+	# 	G = nx.DiGraph()
+	# 	G.add_nodes_from( list(range(len(self.nodes))) )
+	# 	# edge capacity to be max of (e[0] out-degree, e[0] in-degree)
+	# 	G.add_edges_from( [(self.edges[i][0], self.edges[i][1], {"capacity" : 1 + i + i**2}) for i in range(len(self.edges))])
+	# 	_, flow_dict = nx.maximum_flow(G, 0, len(self.nodes) - 1)
+	# 	flow_edges = np.array([flow_dict[e[0]][e[1]] for e in self.edges])
+	# 	# check for negative entries
+	# 	flow_edges[np.where(flow_edges < 0)[0]] = 0
+	# 	# normalize such that sum_e f_e l_e = sumreads
+	# 	s = flow_edges.dot(self.efflen)
+	# 	flow_edges = flow_edges / s * numreads
+	# 	return flow_edges
+
 	def initialflow(self, numreads = 100):
 		if not(self.results is None):
 			s = np.dot(self.efflen, self.results)
@@ -222,14 +244,15 @@ def reinforce_flowbalance(opt, x):
 	return x
 
 
-def optimizegraph(opt, max_iter = 300, max_cpu_time = 50):
+def optimizegraph(opt, max_iter = 300, max_cpu_time = 100):
 	x_L, x_U = opt.bound_variables()
 	g_L, g_U = opt.bound_constraints()
 	nlp = pyipopt.create(opt.n_var, x_L, x_U, opt.n_cons, g_L, g_U, opt.nnzj, opt.nnzh, \
 		opt.eval_objective, opt.eval_grad_objective, opt.eval_constraints, opt.eval_jac_constraint)
-	nlp.int_option('max_iter', 300)
 	nlp.num_option('max_cpu_time', max_cpu_time)
 	nlp.int_option('print_level', 0)
+	nlp.num_option('tol', 1e-18)
+	nlp.num_option('acceptable_tol', 1e-18)
 	x, zl, zu, constraint_multipliers, obj, status = nlp.solve(opt.initialflow())
 	nlp.close()
 	# reinforce flow balance
