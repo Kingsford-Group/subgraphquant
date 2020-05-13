@@ -137,7 +137,7 @@ class IpoptObject_split(object):
 			if sum_relevant_flows > 0:
 				value -= self.weights[i] * np.log(sum_relevant_flows)
 			else:
-				value -= self.weights[i] * 1e-50;
+				value -= self.weights[i] * np.log(1e-50);
 		return value
 
 	def eval_grad_objective(self, flows):
@@ -180,20 +180,6 @@ class IpoptObject_split(object):
 			hess *= obj_factor
 			index = np.tril_indices(self.n_var)
 			return hess[index]
-
-	# def initialflow(self, numreads = 100):
-	# 	G = nx.DiGraph()
-	# 	G.add_nodes_from( list(range(len(self.nodes))) )
-	# 	# edge capacity to be max of (e[0] out-degree, e[0] in-degree)
-	# 	G.add_edges_from( [(self.edges[i][0], self.edges[i][1], {"capacity" : 1 + i + i**2}) for i in range(len(self.edges))])
-	# 	_, flow_dict = nx.maximum_flow(G, 0, len(self.nodes) - 1)
-	# 	flow_edges = np.array([flow_dict[e[0]][e[1]] for e in self.edges])
-	# 	# check for negative entries
-	# 	flow_edges[np.where(flow_edges < 0)[0]] = 0
-	# 	# normalize such that sum_e f_e l_e = sumreads
-	# 	s = flow_edges.dot(self.efflen)
-	# 	flow_edges = flow_edges / s * numreads
-	# 	return flow_edges
 
 	def initialflow(self, numreads = 100):
 		if not(self.results is None):
@@ -251,9 +237,9 @@ def optimizegraph(opt, max_iter = 300, max_cpu_time = 100):
 		opt.eval_objective, opt.eval_grad_objective, opt.eval_constraints, opt.eval_jac_constraint)
 	nlp.num_option('max_cpu_time', max_cpu_time)
 	nlp.int_option('print_level', 0)
-	nlp.num_option('tol', 1e-18)
-	nlp.num_option('acceptable_tol', 1e-18)
-	x, zl, zu, constraint_multipliers, obj, status = nlp.solve(opt.initialflow())
+	nlp.num_option('tol', 1e-12)
+	nlp.num_option('acceptable_tol', 1e-12)
+	x, zl, zu, constraint_multipliers, obj, status = nlp.solve( initialize_flow(opt) )
 	nlp.close()
 	# reinforce flow balance
 	x = reinforce_flowbalance(opt, x)
@@ -299,3 +285,57 @@ def UpdateOptWeight(Opts, NameIndex, eq_classes, Gene_Eq_Index):
 					opt.weights_changing[idx_edge_group] += ali.weights
 		opt.weights = np.array([opt.weights_fixed[i] + opt.weights_changing[i] for i in range(len(opt.weights_fixed))])
 	return Opts
+
+
+def trace_back(opt, G, idx, flow_edges, map_pairnode_edge):
+	# idx is the index of the node, NOT EDGE
+	paths_in = [idx]
+	while paths_in[0] != 0:
+		parents = list(G.predecessors(paths_in[0]))
+		this_flows = np.array([flow_edges[map_pairnode_edge[(x, paths_in[0])]] for x in parents])
+		if np.sum(this_flows == 0) == 0:
+			selection = parents[0]
+		else:
+			selection = parents[np.where(this_flows==0)[0][0]]
+		paths_in = [selection] + paths_in
+	return paths_in
+
+
+def keep_searching(opt, G, idx, flow_edges, map_pairnode_edge):
+	# idx is the index of the node, NOT EDGE
+	paths_out = [idx]
+	while paths_out[-1] != len(opt.nodes) - 1:
+		children = list(G.successors(paths_out[-1]))
+		this_flows = np.array([flow_edges[map_pairnode_edge[(paths_out[-1],x)]] for x in children])
+		if np.sum(this_flows == 0) == 0:
+			selection = children[0]
+		else:
+			selection = children[np.where(this_flows==0)[0][0]]
+		paths_out += [selection]
+	return paths_out
+
+
+def initialize_flow(opt, numreads = 100):
+	G = nx.DiGraph()
+	G.add_nodes_from( list(range(len(opt.nodes))) )
+	# edge capacity to be max of (e[0] out-degree, e[0] in-degree)
+	G.add_edges_from( opt.edges )
+	map_pairnode_edge = {opt.edges[i]:i for i in range(len(opt.edges))}
+	flow_edges = np.zeros( len(opt.edges) )
+	while np.sum(flow_edges == 0) > 0:
+		idx = [i for i in range(len(opt.edges)) if flow_edges[i] == 0][0]
+		if opt.edges[idx][0] == 0:
+			path = keep_searching(opt, G, 0, flow_edges, map_pairnode_edge)
+		elif opt.edges[idx][1] == len(opt.nodes) - 1:
+			path = trace_back(opt, G, len(opt.nodes) - 1, flow_edges, map_pairnode_edge)
+		else:
+			paths_in = trace_back(opt, G, opt.edges[idx][0], flow_edges, map_pairnode_edge)
+			paths_out = keep_searching(opt, G, opt.edges[idx][1], flow_edges, map_pairnode_edge)
+			path = paths_in + paths_out
+		edge_indexes = np.array([map_pairnode_edge[(path[i], path[i+1])] for i in range(len(path) - 1)])
+		assert( len(edge_indexes) == len(path) - 1 )
+		flow_edges[edge_indexes] += 1
+	# normalize such that sum_e f_e l_e = sumreads
+	s = flow_edges.dot(opt.efflen)
+	flow_edges = flow_edges / s * numreads
+	return flow_edges

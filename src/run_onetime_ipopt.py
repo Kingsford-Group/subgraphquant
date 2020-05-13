@@ -10,12 +10,14 @@ from utils import *
 from trie_conversion import *
 from EffLen_VLMM import *
 from flow_graph import FlowGraph
+from test_barrier import *
 import pyipopt
 import tqdm
 import copy
 import pickle
 import concurrent.futures
 import time
+from func_timeout import func_timeout
 
 
 def SamplePaths(g, opt):
@@ -95,6 +97,8 @@ if __name__=="__main__":
 		# assert( sanity_check_pathefflen(efflens, graphs) )
 		efflen_hyper = ReadEfflen_hyper(prefix_graph)
 		efflen_simple = ReadEfflen_simple(prefix_graph)
+		# forbidden_edges = ReadForbiddenEdge_pseudo_eqclass(pseudoeq_filename, graphs)
+		forbidden_edges = {}
 
 		Gene_Eq_Index = {gname:[] for gname in graphs.keys()}
 		for i in range(len(eq_classes)):
@@ -102,46 +106,47 @@ if __name__=="__main__":
 				Gene_Eq_Index[g].append(i)
 		Gene_Eq_Index = {g:list(set(v)) for g,v in Gene_Eq_Index.items() if len(v) > 0}
 
-		Names = list(Gene_Eq_Index.keys())
+		Names = list( set(Gene_Eq_Index.keys()) & set(efflen_hyper.keys()) )
 		Names.sort()
-		NameIndex = {Names[i]:i for i in range(len(Names))}
-		Opts = [IpoptObject_split(graphs[gname], efflen_simple[gname], efflen_hyper[gname], [eq_classes[j] for j in Gene_Eq_Index[gname]]) for gname in Names]
-		Status = {}
+		Opts = []
+		for gname in Names:
+			relevant_eq = [eq_classes[j] for j in Gene_Eq_Index[gname]]
+			relevant_eq = sum([[z for z in x if z.gid == gname] for x in relevant_eq], [])
+			if np.max([x.weights for x in relevant_eq]) < 1e-6:
+				continue
+			if gname in forbidden_edges:
+				print(gname + " contain forbidden edges")
+				Opts.append( IpoptObject_split(graphs[gname], efflen_simple[gname], efflen_hyper[gname], [eq_classes[j] for j in Gene_Eq_Index[gname]], forbidden_edges[gname]) )
+			else:
+				Opts.append( IpoptObject_split(graphs[gname], efflen_simple[gname], efflen_hyper[gname], [eq_classes[j] for j in Gene_Eq_Index[gname]]) )
 
-		# # clip efflens to be 0.01 if the edge is not incident to the first node or the last node
-		# count_changed = 0
-		# for gname,g in graphs.items():
-		# 	try:
-		# 		fg = FlowGraph(g.edges, Opts[NameIndex[gname]].initialflow(), 0, len(g.nodes)-1)
-		# 		for idx_e in np.where(efflens[gname] < 0.01)[0]:
-		# 			if g.edges[idx_e][0] != 0 and g.edges[idx_e][1] != len(g.nodes) - 1:
-		# 				tmp_edge_list, tmp_log_weights = fg.sample_centered_path(1, idx_e, weighted=True, seed=0)
-		# 				if np.sum(efflens[gname][tmp_edge_list[0]]) < 0.01:
-		# 					efflens[gname][tmp_edge_list[0][1:-1]] = 0.01
-		# 					count_changed += 1
-		# 	except:
-		# 		print("failed on gene "+gname)
-		# for opt in Opts:
-		# 	opt.efflen = efflens[opt.gid]
-		# print("In total {} effective lengths are adjusted.".format(count_changed))
+		# NameIndex = {Opts[i].gid:i for i in range(len(Opts))}
+		# pool = concurrent.futures.ProcessPoolExecutor(nthreads)
+		# index = [i for i in range(len(Opts)) if np.sum(Opts[i].weights) > 0]
+		# future_to_opt = [pool.submit(optimizegraph, Opts[i], max_iter = 500, max_cpu_time = 200) for i in index]
+		# with tqdm.tqdm(total=len(index)) as pbar:
+		# 	for future in concurrent.futures.as_completed(future_to_opt):
+		# 		opt, status = future.result()
+		# 		idx = NameIndex[opt.gid]
+		# 		Opts[idx].results = opt.results
+		# 		pbar.set_postfix(gname=opt.gid, n_var = opt.n_var)
+		# 		pbar.update(1)
 
-		pool = concurrent.futures.ProcessPoolExecutor(nthreads)
-		index = [i for i in range(len(Opts)) if np.sum(Opts[i].weights) > 0]
-		future_to_opt = [pool.submit(optimizegraph, Opts[i], max_iter = 500, max_cpu_time = 200) for i in index]
-		with tqdm.tqdm(total=len(index)) as pbar:
-			count = 0
-			for future in concurrent.futures.as_completed(future_to_opt):
-				opt, status = future.result()
-				idx = NameIndex[opt.gid]
-				assert( len(Opts[idx].edges) == len(opt.results) )
-				Opts[idx].results = opt.results
-				Status[opt.gid] = status
-				count += 1
-				pbar.set_postfix(gname=opt.gid, n_var = opt.n_var)
+		with tqdm.tqdm(total = len(Opts)) as pbar:
+			for i in range(len(Opts)):
+				x0 = initialize_flow(Opts[i], np.sum(Opts[i].weights))
+				try:
+					x, _ = func_timeout(10, barrier_method, kwargs={"opt":Opts[i], "x0":x0, "stop_criteria":1e-14})
+					Opts[i].results = x
+				except:
+					opt,_ = optimizegraph(Opts[i], max_iter = 3000, max_cpu_time = 100)
+					Opts[i] = opt
 				pbar.update(1)
-		for i in range(len(Opts)):
-			if np.sum(Opts[i].weights) == 0:
-				Opts[i].results = np.zeros(Opts[i].n_var)
+
+		# add back the forbidden edges
+		Opts = [opt for opt in Opts if (not (opt.results is None)) and (not np.any(np.isnan(opt.results))) and (not np.any(np.isinf(opt.results)))]
+		collected_results = {opt.gid : opt.results for opt in Opts}
+
 		pickle.dump( Opts, open(prefix_output + "_opt_ipopt_round0.pkl", 'wb') )
-		pickle.dump( {opt.gid:opt.results for opt in Opts}, open(prefix_output + "_result_ipopt_round0.pkl", 'wb') )
+		pickle.dump( collected_results, open(prefix_output + "_result_ipopt_round0.pkl", 'wb') )
 
