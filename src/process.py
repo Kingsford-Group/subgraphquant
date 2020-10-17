@@ -70,14 +70,15 @@ if __name__=="__main__":
 				sys.exit()
 
 		# generate graph
-		if not Path(outdir_gs + "/gs_graph_fragstart.txt").exists() or not Path(outdir_gs + "/gs_corrections_fragstart.dat").exists():
+		if not Path(outdir_gs + "/gs_graph_fragstart_beforebias.txt").exists():
 			print("GENERATING GRAPH...")
 			p = subprocess.Popen("mkdir -p "+outdir_gs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			out, err = p.communicate()
 			salmonauxdir = outdir_salmon + "/aux_info"
 			salmonquant = outdir_salmon + "/quant.sf"
 			outprefix = outdir_gs + "/gs"
-			p = subprocess.Popen("{}/bin/testgraph 1 {} {} {} {} {}".format(codedir, gtffile, genomefasta, salmonauxdir, salmonquant, outprefix), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+			print( "{}/bin/testgraph {} {} {} {} {}".format(codedir, gtffile, genomefasta, salmonauxdir, salmonquant, outprefix) )
+			p = subprocess.Popen("{}/bin/testgraph {} {} {} {} {}".format(codedir, gtffile, genomefasta, salmonauxdir, salmonquant, outprefix), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			out, err = p.communicate()
 			if err != b'':
 				print(err)
@@ -86,9 +87,22 @@ if __name__=="__main__":
 		# generate equivalent class and prefix trie
 		if not Path(outdir_gs + "/eq_classes.txt").exists():
 			print("GENERATING EQ CLASSES AND PREFIX TRIE...")
-			graphfile = outdir_gs + "/gs_graph_fragstart.txt"
+			graphfile = outdir_gs + "/gs_graph_fragstart_beforebias.txt"
 			# trans_bamfile = outdir_salmon + "/mapping.bam"
+			print( "python {}/src/ProcessEqClasses.py {} {} {} {} {}".format(codedir, gtffile, graphfile, outdir_salmon, outdir_gs+"/eq_classes.txt", outdir_gs+"/gs") )
 			p = subprocess.Popen("python {}/src/ProcessEqClasses.py {} {} {} {} {}".format(codedir, gtffile, graphfile, outdir_salmon, outdir_gs+"/eq_classes.txt", outdir_gs+"/gs"), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+			out, err = p.communicate()
+			if (b'ERROR' in err) or (b'Error' in err):
+				print(err)
+				sys.exit()
+
+		# path effective length
+		if not Path(outdir_gs + "/gs_simpleedge_efflen.txt").exists():
+			print("CALCULATING PATH EFFECTIVE LENGTH...")
+			salmonquant = outdir_salmon + "/quant.sf"
+			outprefix = outdir_gs + "/gs"
+			print( "{}/bin/pathbias {} {} {} {}".format(codedir, gtffile, genomefasta, salmonquant, outprefix) )
+			p = subprocess.Popen("{}/bin/pathbias {} {} {} {}".format(codedir, gtffile, genomefasta, salmonquant, outprefix), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			out, err = p.communicate()
 			if (b'ERROR' in err) or (b'Error' in err):
 				print(err)

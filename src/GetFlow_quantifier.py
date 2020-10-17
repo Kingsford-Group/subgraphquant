@@ -54,40 +54,6 @@ def ReadSalmonQuant(filename):
 	return Exp
 
 
-def ReadKallistoQuant(filename):
-	Exp = {}
-	fp = open(filename, 'r')
-	linecount = 0
-	col_len = -1
-	col_reads = -1
-	for line in fp:
-		linecount += 1
-		if linecount == 1:
-			strs = line.strip().split("\t")
-			col_len = strs.index("eff_length")
-			col_reads = strs.index("est_counts")
-			continue
-		strs = line.strip().split("\t")
-		Exp[strs[0]] = float(strs[col_reads]) / float(strs[col_len])
-	fp.close()
-	return Exp
-
-
-def ReadGroundTruth(filename):
-	Exp = {}
-	fp = open(filename, 'r')
-	col_exp = -1
-	for line in fp:
-		if line[0] == '#':
-			strs = line[1:].strip().split("\t")
-			col_exp = strs.index("CopyNumber")
-			continue
-		strs = line.strip().split("\t")
-		Exp[strs[0]] = float(strs[col_exp])
-	fp.close()
-	return Exp
-
-
 def WriteEdgeFlow_new(outputfile, new_Edge_Flow, new_graphs, NameOrder):
 	assert(len(new_graphs) == len(Edge_Flow))
 	fp = open(outputfile, 'w')

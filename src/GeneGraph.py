@@ -65,10 +65,10 @@ class GeneGraph_t(object):
 				s += "1\t"
 			else:
 				s += "0\t"
-			s += str(v.BiasMultiplier) +"\t"+ (str(v.Coverage)) +"\t("+ ",".join([str(e) for e in v.InEdges]) +")\t(" + ",".join([str(e) for e in v.OutEdges]) +")\n"
+			s += (str(v.Coverage)) +"\t"+ str(v.BiasMultiplier) +"\t("+ ",".join([str(e) for e in v.InEdges]) +")\t(" + ",".join([str(e) for e in v.OutEdges]) +")\n"
 		# string for edges
 		for e in self.vEdges:
-			s += "edge\t"+ str(e.ID) +"\t"+ str(e.Node_1) +"\t"+ str(e.Node_2) +"\t"+ str(e.Flow) +"\t("+ ",".join(e.IncidentTranscripts) +")\n"
+			s += "edge\t"+ str(e.ID) +"\t"+ str(e.Node_1) +"\t"+ str(e.Node_2) +"\t("+ ",".join(e.IncidentTranscripts) +")\n"
 		return s
 
 	def enumerate_paths(self, max_num_paths = 1000):
@@ -147,8 +147,8 @@ def WriteGraphFile(outputfile, Graphs):
 	fp = open(outputfile, 'w')
 	fp = open(outputfile, 'w')
 	fp.write("# graph\tGeneID\tNumNodes\tNumEdges\n")
-	fp.write("# node\tID\tChr\tStartPos\tEndPos\tStrand\tBiasMultiplier\tCoverage\tInEdges\tOutEdges\n")
-	fp.write("# edge\tID\tNode_1\tNode_2\tFlow\tIncidentTranscripts\n")
+	fp.write("# node\tID\tChr\tStartPos\tEndPos\tStrand\tCoverage\tBiasMultiplier\tInEdges\tOutEdges\n")
+	fp.write("# edge\tID\tNode_1\tNode_2\tIncidentTranscripts\n")
 	for g in Graphs:
 		fp.write("graph\t{}\t{}\t{}\n".format(g.GeneID, len(g.vNodes), len(g.vEdges)))
 		s = g.WriteGraph()
