@@ -25,6 +25,7 @@ Three major modules are included:
 + [Spline](https://kluge.in-chemnitz.de/opensource/spline/)
 + [Ipopt](https://projects.coin-or.org/Ipopt)
 + [GLPK](https://www.gnu.org/software/glpk/)
++ [progress-cpp](https://github.com/prakhar1989/progress-cpp)
 
 ## Compile
 The code for processing Salmon bias correction model is written in c++, which depends on Boost, Eigen, Jellyfish, and Spline library. Download the library from the website indicated above. Among these libraries, only Boost need to be compiled, while the others are header-only.
@@ -32,7 +33,7 @@ The code for processing Salmon bias correction model is written in c++, which de
 After obtaining the libraries and compiling Boost, compile the bias correction processing code using
 ```
 cd subgraphquant
-make (BOOST=) (EIGEN=) (JELLYFISH=) (SPLINE=)
+make (BOOST=) (EIGEN=) (JELLYFISH=) (SPLINE=) (PBAR=)
 ```
 
 ## Usage
