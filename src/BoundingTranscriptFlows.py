@@ -56,7 +56,7 @@ if __name__=="__main__":
 		outputfile = sys.argv[3]
 
 		if not Path(outputfile).exists():
-			old_graphs = ReadGraphFile(graph_prefix + "_graph_fragstart.txt")
+			old_graphs = ReadGraphFile(graph_prefix + "_graph_fragstart_beforebias.txt")
 			graphs, eq_classes = load_data(graph_prefix)
 			results = pickle.load(open(resobject, 'rb'))
 			assert(len(old_graphs) == len(results) and len(old_graphs) == len(graphs))

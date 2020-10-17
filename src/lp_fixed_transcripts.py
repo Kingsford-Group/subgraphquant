@@ -97,7 +97,7 @@ if __name__ == "__main__":
 		outputfile = sys.argv[3]
 
 		if not Path(outputfile).exists():
-			old_graphs = ReadGraphFile(graph_prefix + "_graph_fragstart.txt")
+			old_graphs = ReadGraphFile(graph_prefix + "_graph_fragstart_beforebias.txt")
 			old_name_index = {old_graphs[i].GeneID:i for i in range(len(old_graphs))}
 			new_graphs, eq_classes = load_data(graph_prefix)
 			results = pickle.load(open(result_object, 'rb'))

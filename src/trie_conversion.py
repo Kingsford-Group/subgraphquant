@@ -486,7 +486,7 @@ def work(graph_fn, eq_class_fn, out_prefix, dep_free = False, debug = False):
     '''
     Main working routine. Reads all stuff and writes the new graph and new
     equivalance classes as pickled objects.
-    @param graph_fn: File name for graph_fragstart.txt.
+    @param graph_fn: File name for _graph_fragstart_beforebias.txt.
     @param eq_class_fn: Filename for eq_classes.txt.
     @param out_prefix: Prefix for outputted files.
     @param dep_free: By default the pickled object can only be loaded with this
@@ -583,7 +583,7 @@ def load_data(prefix):
     return ret1, ret2
 
 if __name__ == "__main__":
-    #  work("sim2/gs_graph_fragstart.txt", "sim2/eq_classes.txt", "sim2/test_recon",
+    #  work("sim2/gs_graph_fragstart_beforebias.txt", "sim2/eq_classes.txt", "sim2/test_recon",
          #  debug = True)
-    work_merged("sim2/gs_graph_fragstart.txt", "sim2/eq_classes.txt", "sim2/test_merged",
+    work_merged("sim2/gs_graph_fragstart_beforebias.txt", "sim2/eq_classes.txt", "sim2/test_merged",
                 debug = True)
