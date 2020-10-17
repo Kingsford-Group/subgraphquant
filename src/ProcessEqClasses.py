@@ -37,6 +37,8 @@ def write_mapping_simpleedge_prefixedge(Graphs, prefix_graphs, outprefix_trie, m
 		all_paths = []
 		for t in all_trans:
 			node_list = [e.Node_1 for e in g.vEdges if t in e.IncidentTranscripts] + [g.vNodes[-1].ID]
+			if len(node_list) > 1 and g.vNodes[node_list[-2]].StartPos == g.vNodes[-1].StartPos:
+				node_list = node_list[:-1]
 			for i in range(1, len(node_list) - 1):
 				for j in range(i+2, len(node_list)):
 					inner_length = np.sum([g.vNodes[k].EndPos - g.vNodes[k].StartPos for k in node_list[(i+1):j]])
@@ -46,7 +48,7 @@ def write_mapping_simpleedge_prefixedge(Graphs, prefix_graphs, outprefix_trie, m
 		all_paths = list(set(all_paths))
 		# single node
 		for v in g.vNodes:
-			if v.ID == 0 or v.ID == len(g.vNodes) - 1:
+			if v.ID == 0 or v.StartPos == g.vNodes[-1].StartPos:
 				continue
 			new_edges = new_g.match([v.ID])
 			fp.write("{}\t{}\t{}\n".format(gname, v.ID, ",".join([str(x) for x in new_edges])))
@@ -80,9 +82,9 @@ if __name__=="__main__":
 
 		eqclasses = ProcessEquivalentClass(salmon_folder, Transcripts, Graphs, GraphNameIndex, out_eqclass)
 
+		# XXX: if update to the pseudo eq class version, the following code should be updated to the appended graph file and merged eq class
 		work(graphfile, out_eqclass, outprefix_trie, debug = False)
 
 		# write the paths corresponding to each prefix graph edge
 		prefix_graphs, eqclasses = load_data(outprefix_trie)
-		write_paths_prefixedge(prefix_graphs, outprefix_trie)
 		write_mapping_simpleedge_prefixedge(Graphs, prefix_graphs, outprefix_trie)

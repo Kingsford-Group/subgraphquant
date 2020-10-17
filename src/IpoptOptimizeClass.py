@@ -13,6 +13,7 @@ class IpoptObject_split(object):
 	def __init__(self, g, efflen_simple_paths, efflen_hyper_paths, eq_classes, forbidden_edges = []):
 		# note that efflen_simple_paths contain a list of splice graph node list, prefix graph edges and the efflen
 		# but efflen_hyper_paths contains the equivalent class mapping node lists and the efflen
+		# forbidden_edges is a list of edge indices in the prefix graph constructed with pseudo eq classes corresponding to super short paths
 		# graph info
 		self.gid = g._name
 		self.nodes = g.nodes
@@ -28,29 +29,30 @@ class IpoptObject_split(object):
 		# process effective length due to normalization constraint: sum c_p l_p = const
 		# map to prefix graph edges: sum_p c_p l_p = sum_p (sum_{e in AS(p)} f_e) l_p = sum_e f_e (sum_{p: e in AS(p)} l_p)
 		# prefix graph edge effective length is sum_{p: e in AS(p)} l_p
+		# add efflen for simple edges
 		processed_nl = []
 		for info in efflen_simple_paths:
 			(nodelist, edgelist, value) = info
 			self.efflen[np.array([x for x in edgelist if not (x in forbidden_edges)])] += value
 			processed_nl.append( tuple(nodelist) )
 		processed_nl = set(processed_nl)
+		# add efflen for hyper edges, get the prefix graph edge corresponding to the splice graph node list from eq_classes
+		index_eq = {}
+		for i in range(len(eq_classes)):
+			eq = eq_classes[i]
+			for j in range(len(eq)):
+				if eq[j].gid == self.gid:
+					index_eq[ tuple(eq[j].vpath) ] = (i,j)
 		for info in efflen_hyper_paths:
 			(nodelist, value) = info
 			# find the corresponding edges by eq_classes
 			if tuple(nodelist) in processed_nl:
 				continue
-			whether_find = False
-			for eq in eq_classes:
-				for i in range(len(eq)):
-					if eq[i].gid == self.gid and tuple(nodelist) == tuple(eq[i].vpath):
-						assert( len(forbidden_edges & set(eq[i].new_edges)) == 0 )
-						self.efflen[ np.array(eq[i].new_edges) ] += value
-						processed_nl.add( tuple(nodelist) )
-						whether_find = True
-						break
-				if whether_find:
-					break
-			assert(whether_find)
+			assert( tuple(nodelist) in index_eq )
+			(i, j) = index_eq[ tuple(nodelist) ]
+			assert( len(forbidden_edges & set(eq_classes[i][j].new_edges)) == 0 )
+			self.efflen[ np.array(eq_classes[i][j].new_edges) ] += value
+			processed_nl.add( tuple(nodelist) )
 		# process weights
 		# temporary map for edge groups and its weights
 		egweight_fixed = {}

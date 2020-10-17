@@ -214,10 +214,27 @@ class ReadAlignment_t(object):
 						overlapping_nodes.append(v.ID)
 			overlapping_nodes = list(set(overlapping_nodes))
 			overlapping_nodes.sort()
+			set_overlapping_nodes = set(overlapping_nodes)
 			# find the edges between aligned nodes
+			# overlapping_edges = []
+			# for j in range(1, len(overlapping_nodes)):
+			# 	overlapping_edges += ShortestPath(g, overlapping_nodes[j-1], overlapping_nodes[j])
+			# find overlapping edges by check whether each transcript contain all the nodes
+			trans_nodes_map = {}
+			for e in g.vEdges:
+				for t in e.IncidentTranscripts:
+					if t in trans_nodes_map:
+						trans_nodes_map[t].append( e.Node_1 )
+					else:
+						trans_nodes_map[t] = [e.Node_1]
 			overlapping_edges = []
-			for j in range(1, len(overlapping_nodes)):
-				overlapping_edges += ShortestPath(g, overlapping_nodes[j-1], overlapping_nodes[j])
+			for t,nl in trans_nodes_map.items():
+				nl.append( g.vNodes[-1].ID )
+				setnl = set(nl)
+				if len(setnl & set_overlapping_nodes) == len(overlapping_nodes):
+					tmpoverlapping_edges = [e.ID for e in g.vEdges if t in e.IncidentTranscripts and e.Node_1 >= overlapping_nodes[0] and e.Node_2 <= overlapping_nodes[-1]]
+					if len(overlapping_edges) == 0 or len(tmpoverlapping_edges) < len(overlapping_edges):
+						overlapping_edges = tmpoverlapping_edges
 			overlapping_edges = list(set(overlapping_edges))
 			overlapping_edges.sort()
 			# sanity check: make sure that the edges are connected

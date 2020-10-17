@@ -37,7 +37,7 @@ class Transcript_t(object):
 			elif self.StartPos!=other.StartPos:
 				return self.StartPos>other.StartPos
 			else:
-				return self.EndPos<other.EndPos
+				return self.EndPos>other.EndPos
 		return NotImplemented
 	def __le__(self, other):
 		result=self.__gt__(other)
@@ -106,6 +106,44 @@ def Map_Gene_Trans(Transcripts):
 		sortedv = sorted(v)
 		GeneTransMap[g] = sortedv
 	return [GeneTransMap, TransGeneMap]
+
+
+def Map_Gene_Trans_fromgtf(gtffile):
+	GeneTransMap={}
+	TransGeneMap={}
+	with open(gtffile, 'r') as fp:
+		for line in fp:
+			if line[0] == '#':
+				continue
+			strs = line.strip().split("\t")
+			if strs[2] != "transcript":
+				continue
+			gene_id = GetFeature(line, "gene_id")
+			trans_id = GetFeature(line, "transcript_id")
+			TransGeneMap[trans_id] = gene_id
+			if gene_id in GeneTransMap:
+				GeneTransMap[gene_id].append( trans_id )
+			else:
+				GeneTransMap[gene_id] = [trans_id]
+	return GeneTransMap, TransGeneMap
+
+
+def ReadGeneStrandStartPos(gtffile):
+	GeneStrand = {}
+	GeneStartPos = {}
+	with open(gtffile, 'r') as fp:
+		for line in fp:
+			if line[0] == '#':
+				continue
+			strs = line.strip().split("\t")
+			if strs[2] != "gene":
+				continue
+			gene_id = GetFeature(line, "gene_id")
+			strand = (strs[6] == "+")
+			startpos = int(strs[3]) - 1 if strand else int(strs[4])
+			GeneStrand[gene_id] = strand
+			GeneStartPos[gene_id] = startpos
+	return GeneStrand, GeneStartPos
 
 
 def GetTransLength(Transcripts):
