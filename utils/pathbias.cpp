@@ -1,12 +1,13 @@
 #include "Transcript.hpp"
 #include "GeneGraph.hpp"
 #include "CombinedBias.hpp"
-#include "ProgressBar.hpp"
+#include "progresscpp/ProgressBar.hpp"
 #include <iomanip>
 #include <omp.h>
 #include <mutex>
 
 using namespace std;
+using namespace progresscpp;
 
 
 bool smaller_nodelist(const vector<int32_t>& a, const vector<int32_t>& b)
