@@ -106,4 +106,28 @@ inline void ReadSalmonTPM(string salmonquantfile, const map< string,int32_t >& T
 	input.close();
 };
 
+inline void ReadSalmonEfflen(string salmonquantfile, const map< string,int32_t >& TransIndex, vector<double>& salmon_efflen)
+{
+	// clear variable
+	salmon_efflen.clear();
+	salmon_efflen.assign(TransIndex.size(), 0);
+	// read quantification output
+	ifstream input(salmonquantfile);
+	string line;
+	int32_t linecount = 0;
+	while (getline(input, line)) {
+		linecount ++;
+		if (linecount == 1)
+			continue;
+		vector<string> strs;
+		boost::split(strs, line, boost::is_any_of("\t"));
+		map< string,int32_t >::const_iterator it = TransIndex.find(strs[0]);
+		if( it == TransIndex.cend() )
+			continue;
+		salmon_efflen[it->second] = stod(strs[2]);
+	}
+
+	input.close();
+};
+
 #endif

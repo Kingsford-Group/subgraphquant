@@ -119,4 +119,7 @@ void UpdateAllBiasMultiplier(const vector<Transcript_t>& transcripts, const vect
 
 void WriteGraph(string outputfile, const vector<GeneGraph_t>& GeneGraphs, const vector<string>& RefName, const vector<Transcript_t>& transcripts);
 
+
+void ReadGraph(string inputfile, vector<GeneGraph_t>& GeneGraphs, const map<string,uint8_t>& RefTable);
+
 #endif

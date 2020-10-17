@@ -67,9 +67,19 @@ void GetFLDbound(const vector<double>& FLD, int32_t& fldLow, int32_t& fldHigh)
 			break;
 	}
 
+	double mean = 0;
+	for (int32_t i = 0; i < FLD.size(); i++)
+		mean += (i * FLD[i]);
+	mean /= fldcummulative;
+
+	double var = 0;
+	for (int32_t i = 0; i < FLD.size(); i++)
+		var += ((i - mean) * (i - mean) * FLD[i]);
+	var /= fldcummulative;
+
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
-	cout << "[" << CurrentTimeStr.substr(0, CurrentTimeStr.size()-1) << "] " << "Estimated fragment length lb ="<< fldLow <<" ub = "<< fldHigh <<"\n";
+	cout << "[" << CurrentTimeStr.substr(0, CurrentTimeStr.size()-1) << "] " << "Estimated fragment length lb ="<< fldLow <<" ub = "<< fldHigh <<" mean = "<< mean <<" std = "<< std::sqrt(var) <<"\n";
 };
 
 

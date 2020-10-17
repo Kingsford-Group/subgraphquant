@@ -438,3 +438,63 @@ void WriteGraph(string outputfile, const vector<GeneGraph_t>& GeneGraphs, const 
 	output.close();
 };
 
+
+void ReadGraph(string inputfile, vector<GeneGraph_t>& GeneGraphs, const map<string,uint8_t>& RefTable)
+{
+	GeneGraphs.clear();
+	// an temporary GeneGraph_t instance
+	GeneGraph_t tmpgraph;
+	// open and read file
+	ifstream input(inputfile);
+	string line;
+	while (getline(input, line)) {
+		if (line[0] == '#')
+			continue;
+		vector<string> strs;
+		boost::split(strs, line, boost::is_any_of("\t"));
+		if (strs[0] == "graph") {
+			if (tmpgraph.GeneID != "")
+				GeneGraphs.push_back( tmpgraph );
+			tmpgraph.GeneID = strs[1];
+			tmpgraph.vNodes.clear();
+			tmpgraph.vEdges.clear();
+		}
+		else if (strs[0] == "node") {
+			map<string,uint8_t>::const_iterator itchr = RefTable.find(strs[2]);
+			assert(itchr != RefTable.cend());
+			Node_t tmpnode( stoi(strs[1]), itchr->second, stoi(strs[3]), stoi(strs[4]), (strs[5] == "1"), true);
+			// add to graph node list
+			tmpgraph.vNodes.push_back( tmpnode );
+			assert( tmpgraph.vNodes.size() - 1 == tmpnode.ID );
+		}
+		else if (strs[0] == "edge") {
+			Edge_t tmpedge( stoi(strs[2]), stoi(strs[3]) );
+			tmpedge.setID( stoi(strs[1]) );
+			vector<string> incitrans;
+			strs[4] = strs[4].substr(1, strs[4].size() - 2);
+			boost::split(incitrans, strs[4], boost::is_any_of(","));
+			tmpedge.IncidentTranscripts = incitrans;
+			// add to graph edge list
+			tmpgraph.vEdges.push_back(tmpedge);
+			assert( tmpgraph.vEdges.size() - 1 == tmpedge.ID );
+		}
+	}
+	input.close();
+	// last graph
+	if (tmpgraph.GeneID != "")
+		GeneGraphs.push_back( tmpgraph );
+
+	// construct the in-edges and out-edges list
+	for (GeneGraph_t& g : GeneGraphs) {
+		// clear the in-edge and out-edge vectors
+		for (Node_t& n : g.vNodes) {
+			n.InEdges.clear();
+			n.OutEdges.clear();
+		}
+		// construct new
+		for (Edge_t& e : g.vEdges) {
+			g.vNodes[ e.Node_1 ].OutEdges.push_back( e.ID );
+			g.vNodes[ e.Node_2 ].InEdges.push_back( e.ID );
+		}
+	}
+};

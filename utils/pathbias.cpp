@@ -394,7 +394,7 @@ vector<double> per_gene_path_bias3(const GeneGraph_t& g, const vector< vector<in
 			// check whether the path node list falls into transcript node list
 			if ( is_path_exist(nl, it->second, g, region) ) {
 				related_trans.push_back( it->first );
-				related_expr.push_back( trans_expr.at(it->first) );
+				related_expr.push_back( max(1.0, trans_expr.at(it->first)) );
 				// calculate first and last node length in the query list
 				int32_t nodelen_first = g.vNodes[nl.front()].EndPos - g.vNodes[nl.front()].StartPos;
 				int32_t nodelen_last = g.vNodes[nl.back()].EndPos - g.vNodes[nl.back()].StartPos;
@@ -404,6 +404,11 @@ vector<double> per_gene_path_bias3(const GeneGraph_t& g, const vector< vector<in
 				for (vector< tuple<int32_t,int32_t,double> >::const_iterator ittuple = matrix_bias.cbegin(); ittuple != matrix_bias.cend(); ittuple++) {
 					if (get<0>(*ittuple) >= region.first && get<0>(*ittuple) < region.first + nodelen_first && get<1>(*ittuple) < region.second && get<1>(*ittuple) >= region.second - nodelen_last)
 						this_bias += get<2>(*ittuple);
+				}
+				// test: hard clip on extremely small efflen for single node
+				if (nl.size() == 1 && nodelen_first > fldLow && (nodelen_first - fldLow) * 0.01 > this_bias ) {
+					// cout << "hard clipping bias for " << g.GeneID << " node " << nl[0] << " old bias = " << this_bias << " new bias = " << (nodelen_first - fldLow) * 0.01 << endl;
+					this_bias = (nodelen_first - fldLow) * 0.01;
 				}
 				related_bias.push_back( this_bias );
 			}
@@ -536,6 +541,8 @@ void process_hyperedge_efflen(map< string,vector<double> >& result_eq_efflen, ma
 		map< string, vector< vector<int32_t> > >::const_iterator it_eq = eq_nodes.find(g.GeneID);
 		map< string, vector< vector<int32_t> > >::const_iterator it_se = se_nodes.find(g.GeneID);
 		if (it_eq != eq_nodes.cend()) {
+			if (it_se == se_nodes.cend())
+				cout << g.GeneID << endl;
 			assert(it_se != se_nodes.cend());
 			// efflen = per_gene_path_bias2(g, it->second, trans_seqs, trans_expr, trans_salmon_efflen, gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
 			eq_nodes_efflen = per_gene_path_bias3(g, it_eq->second, it_se->second, trans_seqs, trans_expr, trans_salmon_efflen, gcbias, seqbias, posbias, FLD, fldLow, fldHigh);
